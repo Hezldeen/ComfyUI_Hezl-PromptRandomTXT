@@ -3,3 +3,5 @@
 __pycache__/
 SaveTXT/00_Hezl/*
 SavePreset/*
+!SavePreset/*/
+!SavePreset/.gitkeep
