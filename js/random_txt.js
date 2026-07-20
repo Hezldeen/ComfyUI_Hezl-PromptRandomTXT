@@ -86,6 +86,35 @@ function injectCSS() {
 .hezl-rtxt-btn.all-off { background: #844; color: #fff; border-color: #c66;  }
 .hezl-rtxt-btn.all-off:hover { background: #a55; }
 .hezl-rtxt-btn-row { display: flex; gap: 3px; width: 100%; flex-wrap: wrap; }
+.hezl-rtxt-num-input {
+    width: 50px;
+    background: var(--comfy-input-bg, #333);
+    color: var(--input-text, #ddd);
+    border: 1px solid var(--border-color, #555);
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-size: 12px;
+    text-align: center;
+}
+/* 隐藏 number 输入框的上下箭头 */
+.hezl-rtxt-num-input::-webkit-outer-spin-button,
+.hezl-rtxt-num-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.hezl-rtxt-num-input { -moz-appearance: textfield; }
+/* 种子输入框：宽度自适应内容 */
+.hezl-rtxt-seed-input {
+    width: 120px;
+    text-align: left;
+}
+.hezl-rtxt-sep-divider {
+    width: 1px;
+    background: var(--border-color, #555);
+    flex-shrink: 0;
+    align-self: stretch;
+    margin: 0 2px;
+}
 
 .hezl-rtxt-tree {
     flex: 1;
@@ -123,7 +152,6 @@ function injectCSS() {
     background: var(--comfy-menu-bg, #1e1e1e);
     border: 1px solid var(--border-color, #555);
     border-radius: 4px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
     padding: 4px 0;
     font-size: 12px;
     user-select: none;
@@ -165,7 +193,6 @@ function injectCSS() {
     cursor: col-resize;
     background: var(--border-color, #444);
     flex-shrink: 0;
-    transition: background 0.15s;
 }
 .hezl-rtxt-resizer:hover, .hezl-rtxt-resizer.dragging { background: #6c9; }
 
@@ -235,7 +262,6 @@ function injectCSS() {
     border: 1px solid var(--border-color, #555);
     background: var(--comfy-input-bg, #2a2a2a);
     cursor: grab;
-    transition: border-color 0.15s, opacity 0.15s;
     flex: 1;
     min-width: 0;
 }
@@ -243,6 +269,7 @@ function injectCSS() {
 .hezl-rtxt-item.dragging { opacity: 0.4; cursor: grabbing; }
 .hezl-rtxt-item.drag-over { border-color: #6c9; border-style: dashed; }
 .hezl-rtxt-item.disabled { opacity: 0.5; }
+.hezl-rtxt-item.merge-active { border-color: #ee0; }
 .hezl-item-toggle {
     min-width: 48px;
     height: 20px;
@@ -255,7 +282,6 @@ function injectCSS() {
     padding: 0 8px;
     background: #555;
     color: #ddd;
-    transition: background 0.15s;
 }
 .hezl-item-toggle.on {
     background: #4a8;
@@ -264,8 +290,11 @@ function injectCSS() {
 }
 .hezl-item-toggle:hover { opacity: 0.85; }
 .hezl-item-name {
-    flex-shrink: 0;
+    flex: 1;
+    min-width: 0;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .hezl-sep { color: #666; flex-shrink: 0; }
 .hezl-dice {
@@ -288,8 +317,8 @@ function injectCSS() {
 .hezl-dice:hover { opacity: 0.85; }
 .hezl-dice.active:hover { opacity: 1; }
 .hezl-item-line-btn {
-    flex: 1;
-    min-width: 120px;
+    width: 200px;
+    flex-shrink: 0;
     text-align: left;
     background: var(--comfy-input-bg, #333);
     color: var(--input-text, #ddd);
@@ -300,6 +329,7 @@ function injectCSS() {
     cursor: pointer;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .hezl-item-line-btn:hover { border-color: #6c9; }
 .hezl-item-line-btn.random-active { border: 1px solid red; }
@@ -337,7 +367,6 @@ function injectCSS() {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
 }
 .hezl-modal-header {
     display: flex;
@@ -465,6 +494,10 @@ function getState(node) {
             treeShiftSelected: {}, // path -> bool (shift多选临时高亮)
             lastSelectedPath: null, // 上次选中的txt路径（用于shift范围选）
             searchText: "",
+            merge_enabled: false,   // 合并随机输出开关
+            merge_count: 1,         // 合并随机输出数量
+            seed_mode: "random",    // "random"=每次随机, "fixed"=固定种子
+            seed: 0,                // 种子值
         });
     }
     return nodeStates.get(node);
@@ -527,6 +560,10 @@ function serializeState(node) {
             selected_line: it.selected_line,
             separator: it.separator ?? ",",
         })),
+        merge_enabled: state.merge_enabled,
+        merge_count: state.merge_count,
+        seed_mode: state.seed_mode,
+        seed: state.seed,
     };
 }
 function serializeConfigStr(node) {
@@ -536,6 +573,10 @@ function serializeConfigStr(node) {
 async function restoreState(node, stateObj) {
     const state = getState(node);
     state.items = [];
+    state.merge_enabled = !!(stateObj && stateObj.merge_enabled);
+    state.merge_count = (stateObj && stateObj.merge_count) || 1;
+    state.seed_mode = (stateObj && stateObj.seed_mode) || "random";
+    state.seed = (stateObj && stateObj.seed) || 0;
     if (stateObj && stateObj.items) {
         for (const item of stateObj.items) {
             const newItem = {
@@ -557,6 +598,12 @@ async function restoreState(node, stateObj) {
         }
     }
     renderItems(node);
+    // 同步合并/种子 UI
+    updateMergeBtn(node);
+    updateSeedBtn(node);
+    if (node._hezl_seed_input) node._hezl_seed_input.value = state.seed;
+    const mci = node._hezl_merge_btn?.parentElement?.querySelector("input.hezl-rtxt-num-input");
+    if (mci) mci.value = state.merge_count;
 }
 
 // ============ 递归收集文件夹下所有txt ============
@@ -1149,6 +1196,38 @@ function updateAllRandomBtn(node) {
     }
 }
 
+// ====== 合并随机输出按钮状态 ======
+function updateMergeBtn(node) {
+    const btn = node._hezl_merge_btn;
+    if (!btn) return;
+    const state = getState(node);
+    if (state.merge_enabled) {
+        btn.textContent = "🗳️";
+        btn.title = "合并随机输出已开启（点击关闭）";
+        btn.className = "hezl-rtxt-btn all-on";
+    } else {
+        btn.textContent = "🗳️";
+        btn.title = "合并随机输出已关闭（点击开启）";
+        btn.className = "hezl-rtxt-btn";
+    }
+}
+
+// ====== 种子按钮状态 ======
+function updateSeedBtn(node) {
+    const btn = node._hezl_seed_btn;
+    if (!btn) return;
+    const state = getState(node);
+    if (state.seed_mode === "fixed") {
+        btn.textContent = "⏸️";
+        btn.title = "固定种子（相同种子输出相同结果，点击切换为随机）";
+        btn.className = "hezl-rtxt-btn all-on";
+    } else {
+        btn.textContent = "🔀";
+        btn.title = "随机种子（每次执行都不同，点击切换为固定）";
+        btn.className = "hezl-rtxt-btn";
+    }
+}
+
 // ============ 右侧列表渲染 ============
 function renderItems(node) {
     const state = getState(node);
@@ -1178,7 +1257,9 @@ function renderItems(node) {
         indexEl.title = `输出顺序: ${index + 1}`;
 
         const row = document.createElement("div");
-        row.className = "hezl-rtxt-item" + (item.enabled ? "" : " disabled");
+        let rowClass = "hezl-rtxt-item" + (item.enabled ? "" : " disabled");
+        if (state.merge_enabled) rowClass += " merge-active";
+        row.className = rowClass;
         row.draggable = true;
         row.dataset.index = index;
 
@@ -1269,8 +1350,8 @@ function renderItems(node) {
         row.appendChild(sepBtn);
         row.appendChild(removeBtn);
         row.appendChild(sep2);
-        row.appendChild(nameSpan);
         row.appendChild(lineBtn);
+        row.appendChild(nameSpan);
 
         // 拖拽排序
         setupItemDrag(row, node);
@@ -1356,7 +1437,7 @@ function locateFileInTree(node, filePath) {
         for (const row of rows) {
             const nameEl = row.querySelector(".hezl-tree-name");
             if (nameEl && nameEl.title === filePath) {
-                row.scrollIntoView({ block: "center", behavior: "smooth" });
+                row.scrollIntoView({ block: "center" });
                 // 高亮闪烁
                 row.style.background = "rgba(106,204,153,0.4)";
                 setTimeout(() => { row.style.background = ""; }, 1200);
@@ -1440,10 +1521,32 @@ function openLineModal(node, itemIndex, btnEl) {
     const searchWrap = document.createElement("div");
     searchWrap.style.padding = "6px 10px";
     searchWrap.style.borderBottom = "1px solid var(--border-color, #444)";
+    searchWrap.style.display = "flex";
+    searchWrap.style.gap = "4px";
+    searchWrap.style.alignItems = "center";
+
+    // 🌏️ 原文/译文切换按钮（默认显示译文，切换后显示原文）
+    const hasTr = (item.tr_lines || []).some(l => l.trim());
+    let showOriginal = false; // false=显示译文(.tr), true=显示原文(.txt)
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "hezl-rtxt-btn";
+    toggleBtn.textContent = "🌏️";
+    toggleBtn.title = hasTr ? "当前显示译文，点击切换为原文" : "无译文文件";
+    toggleBtn.style.flexShrink = "0";
+    if (!hasTr) toggleBtn.style.opacity = "0.4";
+    toggleBtn.disabled = !hasTr;
+    toggleBtn.addEventListener("click", () => {
+        showOriginal = !showOriginal;
+        toggleBtn.title = showOriginal ? "当前显示原文，点击切换为译文" : "当前显示译文，点击切换为原文";
+        toggleBtn.classList.toggle("all-on", showOriginal);
+        renderList(searchInput.value);
+    });
+
     const searchInput = document.createElement("input");
     searchInput.type = "text";
     searchInput.className = "hezl-modal-search";
     searchInput.placeholder = "搜索词组...";
+    searchWrap.appendChild(toggleBtn);
     searchWrap.appendChild(searchInput);
 
     // 列表
@@ -1472,8 +1575,8 @@ function openLineModal(node, itemIndex, btnEl) {
             const en = lines[i];
             const tr = (i < trLines.length) ? trLines[i] : "";
             const trTrim = tr.trim();
-            // 主显示：有译文显示译文，否则显示原文
-            const mainText = trTrim || en;
+            // 主显示：🌏️切换控制 — 默认显示译文，切换后显示原文；无译文时始终显示原文
+            const mainText = showOriginal ? en : (trTrim || en);
             // 搜索：译文与原文都参与匹配
             if (q && !en.toLowerCase().includes(q) && !tr.toLowerCase().includes(q)) continue;
             total++;
@@ -1941,7 +2044,56 @@ function buildUI(node) {
     removeAllBtn.title = "移除右侧全部txt文件";
     removeAllBtn.addEventListener("click", () => removeAllItems(node));
 
-    // 顶部分两行：第一行=预设管理，第二行=移除全部/全开启全关闭/全随机
+    // ====== 合并随机输出控件 ======
+    const mergeBtn = document.createElement("button");
+    mergeBtn.className = "hezl-rtxt-btn";
+    mergeBtn.textContent = "🗳️";
+    mergeBtn.title = "开启/关闭 合并随机输出词组";
+    mergeBtn.addEventListener("click", () => {
+        state.merge_enabled = !state.merge_enabled;
+        updateMergeBtn(node);
+        renderItems(node);
+    });
+    node._hezl_merge_btn = mergeBtn;
+
+    const mergeCountInput = document.createElement("input");
+    mergeCountInput.type = "number";
+    mergeCountInput.className = "hezl-rtxt-num-input";
+    mergeCountInput.min = "1";
+    mergeCountInput.value = state.merge_count;
+    mergeCountInput.title = "合并随机输出的词组数量";
+    mergeCountInput.addEventListener("input", () => {
+        const v = parseInt(mergeCountInput.value) || 1;
+        state.merge_count = Math.max(1, v);
+    });
+
+    // ====== 种子控件 ======
+    const seedBtn = document.createElement("button");
+    seedBtn.className = "hezl-rtxt-btn";
+    seedBtn.textContent = "🔀";
+    seedBtn.title = "随机种子（每次执行都不同）";
+    seedBtn.addEventListener("click", () => {
+        state.seed_mode = state.seed_mode === "fixed" ? "random" : "fixed";
+        updateSeedBtn(node);
+    });
+    node._hezl_seed_btn = seedBtn;
+
+    const seedInput = document.createElement("input");
+    seedInput.type = "text";
+    seedInput.className = "hezl-rtxt-num-input hezl-rtxt-seed-input";
+    seedInput.value = state.seed;
+    seedInput.title = "种子值（固定模式时相同种子输出相同结果）";
+    seedInput.addEventListener("input", () => {
+        const v = parseInt(seedInput.value) || 0;
+        state.seed = Math.max(0, v);
+    });
+    node._hezl_seed_input = seedInput;
+
+    // 初始化按钮状态
+    updateMergeBtn(node);
+    updateSeedBtn(node);
+
+    // 顶部分两行：第一行=预设管理，第二行=批量操作+合并+种子
     const toolbarRow1 = document.createElement("div");
     toolbarRow1.className = "hezl-rtxt-toolbar-row";
     toolbarRow1.appendChild(presetSelect);
@@ -1954,6 +2106,15 @@ function buildUI(node) {
     toolbarRow2.appendChild(removeAllBtn);
     toolbarRow2.appendChild(allToggleBtn);
     toolbarRow2.appendChild(allRandomBtn);
+    // 分隔线 | 合并随机输出 | 分隔线 | 种子
+    const div1 = document.createElement("div"); div1.className = "hezl-rtxt-sep-divider";
+    const div2 = document.createElement("div"); div2.className = "hezl-rtxt-sep-divider";
+    toolbarRow2.appendChild(div1);
+    toolbarRow2.appendChild(mergeBtn);
+    toolbarRow2.appendChild(mergeCountInput);
+    toolbarRow2.appendChild(div2);
+    toolbarRow2.appendChild(seedBtn);
+    toolbarRow2.appendChild(seedInput);
 
     toolbar.appendChild(toolbarRow1);
     toolbar.appendChild(toolbarRow2);
@@ -1981,32 +2142,23 @@ function buildUI(node) {
     });
     widget.serializeValue = function () { return serializeConfigStr(node); };
     widget.options = widget.options || {};
-    widget.options.getMinHeight = function () { return 300; };
-    widget.computeSize = function () { return [820, 540]; };
+
+    // ====== 跨前端兼容方案（旧前端 + Nodes 2.0）======
+    // 核心原理：min=max=getHeight=动态值，widget 高度锁定在 node._widgetHeight
+    // - 旧前端：getHeight() 返回值作为 widget 高度
+    // - Nodes 2.0：getMinHeight()=getMaxHeight() 使 widget 高度固定，无反馈循环
+    // - onResize 同步 _widgetHeight = node.size[1] - 偏移量，跟随用户拖拽
+    const WIDGET_OFFSET = 50; // 标题栏 + 内边距偏移
+    node._widgetHeight = Math.max(300, (node.size?.[1] || 540) - WIDGET_OFFSET);
+
+    widget.options.getMinHeight = function () { return node._widgetHeight; };
+    widget.options.getMaxHeight = function () { return node._widgetHeight; };
+    widget.options.getHeight   = function () { return node._widgetHeight; };
+
     node.resizable = true;
 
-    // ====== 关键修复：直接用像素高度撑满节点 ======
-    // 前端 DOM 链中没有任何父元素有固定高度（lg-node/body/grid 全是 content-based），
-    // 所以 height:100% / flex:1 全部无效。父级 WidgetDOM 的 *:flex-1 会设置 flex:1 1 0%,
-    // flex-basis:0% 会覆盖 height 属性。必须用 flex:none + 显式像素高度才能生效。
-    const NODE_HEADER_OFFSET = 50;
-    container.style.flex = "none";
-    container.style.minHeight = "300px";
+    // 容器用 CSS height:100% 填充父级（前端通过 getter 设置 wrapper 确定高度）
     container.style.width = "100%";
-
-    function syncContainerHeight() {
-        if (!node.graph) return; // 节点已删除
-        const h = Math.max(300, (node.size?.[1] || 540) - NODE_HEADER_OFFSET);
-        const cur = parseInt(container.style.height) || 0;
-        if (cur !== h) container.style.height = h + "px";
-    }
-    node._hezl_sync_height = syncContainerHeight;
-    // 初始同步 + rAF 循环兜底（onResize 可能不会在所有场景触发）
-    requestAnimationFrame(function loop() {
-        if (!node.graph) return;
-        syncContainerHeight();
-        requestAnimationFrame(loop);
-    });
 
     // 初始化加载
     (async () => {
@@ -2022,6 +2174,29 @@ function buildUI(node) {
 // ============ 扩展注册 ============
 app.registerExtension({
     name: EXTENSION_NAME,
+
+    async init() {
+        // 拦截 queuePrompt：在随机种子模式下，每次执行前生成新种子并显示在输入框
+        // 这样 PNG 元数据中保存的 config 会包含本次使用的种子，拖放图片复现时种子一致
+        const origQueuePrompt = app.queuePrompt;
+        app.queuePrompt = function (...args) {
+            try {
+                const graph = app.graph || window.graph;
+                if (graph && graph._nodes) {
+                    for (const n of graph._nodes) {
+                        if (n.type === NODE_NAME) {
+                            const st = getState(n);
+                            if (st.seed_mode === "random") {
+                                st.seed = Math.floor(Math.random() * 1000000000);
+                                if (n._hezl_seed_input) n._hezl_seed_input.value = st.seed;
+                            }
+                        }
+                    }
+                }
+            } catch (e) { console.error("HezlRandomTXT: 更新随机种子失败", e); }
+            return origQueuePrompt.apply(this, args);
+        };
+    },
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name !== NODE_NAME) return;
@@ -2046,12 +2221,13 @@ app.registerExtension({
             }
         };
 
-        // 节点尺寸变化时触发容器重排
+        // 节点拖拽时同步 _widgetHeight，使 widget 高度跟随节点变化
         const origOnResize = nodeType.prototype.onResize;
         nodeType.prototype.onResize = function () {
             origOnResize?.apply(this, arguments);
-            if (typeof this._hezl_sync_height === "function") {
-                this._hezl_sync_height();
+            if (this._widgetHeight !== undefined) {
+                this._widgetHeight = Math.max(300, (this.size?.[1] || 540) - 50);
+                this.graph?.setDirtyCanvas(true, true);
             }
         };
     },

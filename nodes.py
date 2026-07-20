@@ -266,8 +266,26 @@ class HezlRandomTXT:
         except Exception:
             cfg = {}
 
-        # 收集已启用项的输出与其自定义分隔符（分隔符用于该项与下一个启用项之间）
+        # ====== 种子控制 ======
+        # seed_mode: "random"=每次随机, "fixed"=固定种子可复现
+        seed_mode = cfg.get("seed_mode", "random")
+        seed = int(cfg.get("seed", 0))
+        if seed_mode == "fixed":
+            rng = random.Random(seed)
+        else:
+            rng = random.Random()
+
+        # ====== 合并随机输出模式 ======
+        # merge_enabled: 开启后从所有已启用txt的词组池中随机选取 merge_count 个输出
+        merge_enabled = bool(cfg.get("merge_enabled", False))
+        merge_count = int(cfg.get("merge_count", 1))
+        if merge_count < 1:
+            merge_count = 1
+
+        # 收集已启用项
         enabled = []  # [(line, sep_after)]
+        all_lines_pool = []  # 合并模式的词组池
+
         for item in cfg.get("items", []):
             if not item.get("enabled", False):
                 continue
@@ -286,24 +304,35 @@ class HezlRandomTXT:
             if not lines:
                 continue
 
+            # 合并模式：收集所有词组到池中
+            all_lines_pool.extend(lines)
+
+            # 常规模式：选取输出行
             if item.get("random", False):
-                line = random.choice(lines)
+                line = rng.choice(lines)
             else:
                 idx = int(item.get("selected_line", 0))
                 if idx < 0 or idx >= len(lines):
                     idx = 0
                 line = lines[idx]
 
-            # 自定义分隔符：缺省回退为 "," （向后兼容旧预设）
             sep = item.get("separator", ",")
             if sep is None:
                 sep = ","
             enabled.append((line, sep))
 
+        # ====== 合并随机输出模式：从词组池随机选取 N 个 ======
+        if merge_enabled:
+            if not all_lines_pool:
+                return ("",)
+            n = min(merge_count, len(all_lines_pool))
+            selected = rng.sample(all_lines_pool, n)
+            return (", ".join(selected),)
+
+        # ====== 常规拼接模式 ======
         if not enabled:
             return ("",)
 
-        # 拼接：line0 [sep0] line1 [sep1] line2 ... (最后一项的分隔符不使用)
         parts = []
         for i, (line, sep) in enumerate(enabled):
             parts.append(line)
