@@ -1,6 +1,6 @@
 # ComfyUI_Hezl-PromptRandomTXT
 Comfyui随机输出TXT文件其中一行为字符.Comfyui randomly outputs a line of characters from a TXT file  
-![image](README_Img/260721.png)
+![image](README_Img/260722.png)
 
 
 ## 功能使用
