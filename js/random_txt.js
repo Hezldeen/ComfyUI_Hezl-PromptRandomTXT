@@ -113,8 +113,49 @@ function injectCSS() {
     background: var(--border-color, #555);
     flex-shrink: 0;
     align-self: stretch;
-    margin: 0 2px;
+    margin: 0 8px;
 }
+
+/* ===== 🗳️ + 数量输入框 + 微调按钮 组合 ===== */
+.hezl-merge-group {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    flex-shrink: 0;
+}
+.hezl-merge-group .hezl-rtxt-btn {
+    border-radius: 3px 0 0 3px;
+    border-right: none;
+}
+.hezl-merge-group .hezl-rtxt-num-input {
+    border-radius: 0;
+    border-right: none;
+    width: 36px;
+    text-align: center;
+}
+.hezl-spinner-btns {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+.hezl-spinner-btn {
+    width: 16px;
+    height: 10px;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color, #555);
+    background: var(--comfy-input-bg, #333);
+    color: var(--input-text, #ddd);
+    font-size: 7px;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.hezl-spinner-btn.up { border-radius: 0 3px 0 0; }
+.hezl-spinner-btn.down { border-radius: 0 0 3px 0; border-top: none; }
+.hezl-spinner-btn:hover { background: #445; border-color: #6c9; }
 
 .hezl-rtxt-tree {
     flex: 1;
@@ -214,9 +255,14 @@ function injectCSS() {
 }
 .hezl-rtxt-toolbar-row {
     display: flex;
-    gap: 4px;
+    gap: 12px;
     align-items: center;
     flex-wrap: wrap;
+}
+.hezl-rtxt-toolbar-group {
+    display: flex;
+    gap: 3px;
+    align-items: center;
 }
 .hezl-rtxt-preset-select {
     flex: 1;
@@ -271,15 +317,15 @@ function injectCSS() {
 .hezl-rtxt-item.disabled { opacity: 0.5; }
 .hezl-rtxt-item.merge-active { border-color: #ee0; }
 .hezl-item-toggle {
-    min-width: 48px;
+    min-width: 28px;
     height: 20px;
     border: 1px solid var(--border-color, #555);
-    border-radius: 10px;
+    border-radius: 3px;
     cursor: pointer;
     flex-shrink: 0;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1;
-    padding: 0 8px;
+    padding: 0 4px;
     background: #555;
     color: #ddd;
 }
@@ -476,6 +522,150 @@ function injectCSS() {
 }
 `;
     document.head.appendChild(style);
+}
+
+// ============ Python random.Random 复刻（MT19937）============
+// 用于前端预计算 🎲 随机模式下每个 txt 将输出的行，使词组按钮显示与后端 execute() 一致的结果。
+// 已通过多轮测试验证与 CPython random.Random 字节级一致（choice/sample/getrandbits）。
+// 关键陷阱：JS 中 ^ 优先级低于 +，必须用括号保证 (mt[i] ^ mul) + key + j 的求值顺序。
+const MT_N = 624;
+const MT_M = 397;
+const MT_MATRIX_A = 0x9908b0df;
+const MT_UPPER_MASK = 0x80000000;
+const MT_LOWER_MASK = 0x7fffffff;
+
+class PyRandom {
+    constructor(seed) {
+        this.mt = new Array(MT_N);
+        this.index = MT_N;
+        this.seed(seed);
+    }
+
+    seed(s) {
+        s = Number(s);
+        if (!Number.isFinite(s) || s < 0) s = 0;
+        s = Math.floor(s);
+        // 转换为 uint32 数组（little-endian），与 CPython _PyLong_AsByteArray 一致。
+        // Python 的 random.Random(seed) 对 seed >= 2^32 会拆成多元素 key 调用 init_by_array，
+        // 必须复刻此行为，否则大种子结果不一致。
+        // 限制：JS Number 精度为 2^53，超过此值会丢失精度（与前端 parseInt 一致，可接受）。
+        const key = [];
+        if (s === 0) {
+            key.push(0);
+        } else {
+            let remaining = s;
+            while (remaining > 0) {
+                key.push((remaining & 0xffffffff) >>> 0);
+                remaining = Math.floor(remaining / 0x100000000);
+            }
+        }
+        // init_genrand(19650218) — CPython init_by_array 内部第一步
+        this.mt[0] = 19650218 >>> 0;
+        for (let i = 1; i < MT_N; i++) {
+            this.mt[i] = ((Math.imul(1812433253, (this.mt[i-1] ^ (this.mt[i-1] >>> 30))) + i) >>> 0);
+        }
+        this.index = MT_N;
+        // init_by_array(key)
+        this._init_by_array(key);
+    }
+
+    _init_by_array(init_key) {
+        let i = 1, j = 0;
+        let k = Math.max(MT_N, init_key.length);
+        for (let n = 0; n < k; n++) {
+            const mul = Math.imul((this.mt[i-1] ^ (this.mt[i-1] >>> 30)), 1664525);
+            this.mt[i] = (((this.mt[i] ^ mul) + init_key[j] + j) >>> 0);
+            i++; j++;
+            if (i >= MT_N) { this.mt[0] = this.mt[MT_N-1]; i = 1; }
+            if (j >= init_key.length) { j = 0; }
+        }
+        for (let n = 0; n < MT_N - 1; n++) {
+            const mul = Math.imul((this.mt[i-1] ^ (this.mt[i-1] >>> 30)), 1566083941);
+            this.mt[i] = (((this.mt[i] ^ mul) - i) >>> 0);
+            i++;
+            if (i >= MT_N) { this.mt[0] = this.mt[MT_N-1]; i = 1; }
+        }
+        this.mt[0] = MT_UPPER_MASK;
+        this.index = MT_N;
+    }
+
+    _genrand_uint32() {
+        if (this.index >= MT_N) {
+            for (let kk = 0; kk < MT_N - MT_M; kk++) {
+                let y = ((this.mt[kk] & MT_UPPER_MASK) | (this.mt[kk+1] & MT_LOWER_MASK)) >>> 0;
+                this.mt[kk] = (this.mt[kk+MT_M] ^ (y >>> 1) ^ ((y & 1) ? MT_MATRIX_A : 0)) >>> 0;
+            }
+            for (let kk = MT_N - MT_M; kk < MT_N - 1; kk++) {
+                let y = ((this.mt[kk] & MT_UPPER_MASK) | (this.mt[kk+1] & MT_LOWER_MASK)) >>> 0;
+                this.mt[kk] = (this.mt[kk + (MT_M - MT_N)] ^ (y >>> 1) ^ ((y & 1) ? MT_MATRIX_A : 0)) >>> 0;
+            }
+            let y = ((this.mt[MT_N-1] & MT_UPPER_MASK) | (this.mt[0] & MT_LOWER_MASK)) >>> 0;
+            this.mt[MT_N-1] = (this.mt[MT_M-1] ^ (y >>> 1) ^ ((y & 1) ? MT_MATRIX_A : 0)) >>> 0;
+            this.index = 0;
+        }
+        let y = this.mt[this.index++];
+        y = (y ^ (y >>> 11)) >>> 0;
+        y = (y ^ ((y << 7) & 0x9d2c5680)) >>> 0;
+        y = (y ^ ((y << 15) & 0xefc60000)) >>> 0;
+        y = (y ^ (y >>> 18)) >>> 0;
+        return y >>> 0;
+    }
+
+    _bit_length(n) {
+        let k = 0;
+        while (n > 0) { n = Math.floor(n / 2); k++; }
+        return k;
+    }
+
+    _getrandbits(k) {
+        // k <= 32
+        if (k <= 0) return 0;
+        return (this._genrand_uint32() >>> (32 - k)) >>> 0;
+    }
+
+    _randbelow(n) {
+        if (n <= 0) throw new Error("n must be positive");
+        let k = this._bit_length(n);
+        let r = this._getrandbits(k);
+        while (r >= n) {
+            r = this._getrandbits(k);
+        }
+        return r;
+    }
+
+    choice(seq) {
+        return seq[this._randbelow(seq.length)];
+    }
+
+    sample(population, k) {
+        const n = population.length;
+        if (k < 0 || k > n) throw new Error("invalid sample size");
+        const result = new Array(k);
+        // 与 CPython random.sample 一致：小总体用池方法，大总体用集合方法
+        let setsize = 21;
+        if (k > 5) {
+            setsize += Math.pow(4, Math.ceil(Math.log(k * 3) / Math.log(4)));
+        }
+        if (n <= setsize) {
+            const pool = population.slice();
+            for (let i = 0; i < k; i++) {
+                const j = this._randbelow(n - i);
+                result[i] = pool[j];
+                pool[j] = pool[n - i - 1];
+            }
+        } else {
+            const selected = new Set();
+            for (let i = 0; i < k; i++) {
+                let j = this._randbelow(n);
+                while (selected.has(j)) {
+                    j = this._randbelow(n);
+                }
+                selected.add(j);
+                result[i] = population[j];
+            }
+        }
+        return result;
+    }
 }
 
 // ============ 状态管理 ============
@@ -1228,6 +1418,55 @@ function updateSeedBtn(node) {
     }
 }
 
+// ============ 随机预计算 ============
+// 复刻后端 execute() 的随机逻辑，基于当前 seed 预计算每个 🎲 开启项将选中的行，
+// 使前端词组按钮显示与后端实际输出一致的结果。
+// 注意：必须与 nodes.py 的 execute() 严格保持一致——
+//   - 始终用 random.Random(seed)（后端已改为始终用 seed）
+//   - 跳过 enabled=false 的项（不消耗 RNG 状态）
+//   - random 项调用 rng.choice(lines)，非 random 项用 lines[selected_line]
+//   - 合并模式下按钮不显示预计算（输出是 merge sample，非逐项）
+// 返回：与 state.items 等长的数组，元素为 { line, lineIndex } 或 null（无法预计算）
+function computePreviewLines(node) {
+    const state = getState(node);
+    const result = new Array(state.items.length).fill(null);
+
+    // 合并模式下逐项无独立输出，不预计算
+    if (state.merge_enabled) return result;
+
+    // 复刻 rng = random.Random(seed)
+    let rng;
+    try {
+        rng = new PyRandom(state.seed);
+    } catch (e) {
+        return result;
+    }
+
+    for (let i = 0; i < state.items.length; i++) {
+        const item = state.items[i];
+        // 跳过未启用项（与后端一致，不消耗 RNG）
+        if (!item.enabled) continue;
+        const lines = item.lines || [];
+        if (lines.length === 0) continue;
+
+        if (item.random) {
+            // 复刻 rng.choice(lines)
+            try {
+                const idx = rng._randbelow(lines.length);
+                result[i] = { line: lines[idx], lineIndex: idx };
+            } catch (e) {
+                // RNG 错误时跳过
+            }
+        } else {
+            // 手动选择：不消耗 RNG
+            let idx = item.selected_line || 0;
+            if (idx < 0 || idx >= lines.length) idx = 0;
+            result[i] = { line: lines[idx], lineIndex: idx };
+        }
+    }
+    return result;
+}
+
 // ============ 右侧列表渲染 ============
 function renderItems(node) {
     const state = getState(node);
@@ -1243,6 +1482,9 @@ function renderItems(node) {
         container.innerHTML = '<div class="hezl-items-empty">在左侧勾选 txt 文件后点击"添加"</div>';
         return;
     }
+
+    // 预计算 🎲 随机模式下每个项将输出的行（与后端 execute 一致）
+    const previews = computePreviewLines(node);
 
     const frag = document.createDocumentFragment();
     state.items.forEach((item, index) => {
@@ -1271,13 +1513,15 @@ function renderItems(node) {
         // 开启/关闭按钮
         const toggleBtn = document.createElement("button");
         toggleBtn.className = "hezl-item-toggle" + (item.enabled ? " on" : "");
-        toggleBtn.textContent = item.enabled ? "开启" : "关闭";
+        toggleBtn.textContent = item.enabled ? "🟢" : "🔴";
         toggleBtn.title = "启用/禁用此词条输出";
         toggleBtn.addEventListener("click", () => {
             item.enabled = !item.enabled;
             toggleBtn.classList.toggle("on", item.enabled);
-            toggleBtn.textContent = item.enabled ? "开启" : "关闭";
+            toggleBtn.textContent = item.enabled ? "🟢" : "🔴";
             row.classList.toggle("disabled", !item.enabled);
+            // 切换启用状态会改变 RNG 消耗顺序（禁用项不消耗 RNG），需重新预计算
+            renderItems(node);
         });
 
         // 文件名
@@ -1290,20 +1534,25 @@ function renderItems(node) {
         sep1.className = "hezl-sep";
         sep1.textContent = "|";
 
-        // 🎲随机按钮
+        // 🎲/📌 随机模式按钮（🎲绿色底=随机开启，📌灰色底=随机关闭/固定）
         const diceBtn = document.createElement("button");
         diceBtn.className = "hezl-dice" + (item.random ? " active" : "");
-        diceBtn.textContent = "🎲";
-        diceBtn.title = item.random ? "随机模式已开启（点击关闭）" : "随机模式已关闭（点击开启随机选取一行）";
+        diceBtn.textContent = item.random ? "🎲" : "📌";
+        diceBtn.title = item.random ? "随机模式已开启（点击固定当前选择）" : "随机模式已关闭（点击开启随机选取一行）";
 
         // 词组选择按钮（点击弹窗）- 有译文时显示译文，悬停显示原文
+        // 🎲 开启时显示基于种子预计算的行（与后端 execute 输出一致），否则显示手动选择的行
         const lineBtn = document.createElement("button");
-        lineBtn.className = "hezl-item-line-btn" + (item.random ? " random-active" : "");
-        const hasEn = item.lines.length > 0 && item.selected_line < item.lines.length;
-        const enLine = hasEn ? item.lines[item.selected_line] : "";
-        const hasTr = item.tr_lines.length > 0 && item.selected_line < item.tr_lines.length
-            && item.tr_lines[item.selected_line].trim() !== "";
-        const trLine = hasTr ? item.tr_lines[item.selected_line] : "";
+        // 📌 固定模式时词组按钮边框为红色，提示用户关注手动选择的行
+        lineBtn.className = "hezl-item-line-btn" + (!item.random ? " random-active" : "");
+        const preview = previews[index];
+        // 生效行索引：🎲 开启且有预览时用预计算索引，否则用手动选择索引
+        const effIdx = (item.random && preview) ? preview.lineIndex : (item.selected_line || 0);
+        const hasEn = item.lines.length > 0 && effIdx < item.lines.length;
+        const enLine = hasEn ? item.lines[effIdx] : "";
+        const hasTr = item.tr_lines.length > 0 && effIdx < item.tr_lines.length
+            && item.tr_lines[effIdx].trim() !== "";
+        const trLine = hasTr ? item.tr_lines[effIdx] : "";
         const displayLine = trLine || enLine || "(空)";
         const displayText = displayLine.length > 35 ? displayLine.substring(0, 32) + "..." : displayLine;
         lineBtn.textContent = displayText;
@@ -1312,12 +1561,15 @@ function renderItems(node) {
             : (trLine ? `${trLine}\n${enLine}` : enLine);
         lineBtn.addEventListener("click", (e) => openLineModal(node, index, e.currentTarget));
 
-        // 随机按钮点击：同步切换词组按钮的红色边框
+        // 随机按钮点击：切换 🎲/📌 并重新渲染（切换会改变 RNG 消耗顺序，影响后续所有项的预览）
         diceBtn.addEventListener("click", () => {
             item.random = !item.random;
             diceBtn.classList.toggle("active", item.random);
-            lineBtn.classList.toggle("random-active", item.random);
-            diceBtn.title = item.random ? "随机模式已开启（点击关闭）" : "随机模式已关闭（点击开启随机选取一行）";
+            diceBtn.textContent = item.random ? "🎲" : "📌";
+            // 📌 固定模式时词组按钮边框为红色
+            lineBtn.classList.toggle("random-active", !item.random);
+            diceBtn.title = item.random ? "随机模式已开启（点击固定当前选择）" : "随机模式已关闭（点击开启随机选取一行）";
+            renderItems(node);
         });
 
         const sep2 = document.createElement("span");
@@ -2067,6 +2319,37 @@ function buildUI(node) {
         state.merge_count = Math.max(1, v);
     });
 
+    // 数量输入框右侧的上下微调按钮
+    const spinUp = document.createElement("button");
+    spinUp.className = "hezl-spinner-btn up";
+    spinUp.textContent = "▲";
+    spinUp.title = "增加数量";
+    spinUp.addEventListener("click", () => {
+        const v = Math.max(1, (parseInt(mergeCountInput.value) || 1) + 1);
+        mergeCountInput.value = v;
+        state.merge_count = v;
+    });
+    const spinDown = document.createElement("button");
+    spinDown.className = "hezl-spinner-btn down";
+    spinDown.textContent = "▼";
+    spinDown.title = "减少数量";
+    spinDown.addEventListener("click", () => {
+        const v = Math.max(1, (parseInt(mergeCountInput.value) || 1) - 1);
+        mergeCountInput.value = v;
+        state.merge_count = v;
+    });
+    const spinnerBtns = document.createElement("div");
+    spinnerBtns.className = "hezl-spinner-btns";
+    spinnerBtns.appendChild(spinUp);
+    spinnerBtns.appendChild(spinDown);
+
+    // 将 🗳️ + 数量输入框 + 微调按钮 组合成一个整体（无内部间隙）
+    const mergeGroup = document.createElement("div");
+    mergeGroup.className = "hezl-merge-group";
+    mergeGroup.appendChild(mergeBtn);
+    mergeGroup.appendChild(mergeCountInput);
+    mergeGroup.appendChild(spinnerBtns);
+
     // ====== 种子控件 ======
     const seedBtn = document.createElement("button");
     seedBtn.className = "hezl-rtxt-btn";
@@ -2086,8 +2369,27 @@ function buildUI(node) {
     seedInput.addEventListener("input", () => {
         const v = parseInt(seedInput.value) || 0;
         state.seed = Math.max(0, v);
+        // 种子变化会改变 🎲 随机预览，需重新渲染词组按钮
+        renderItems(node);
     });
     node._hezl_seed_input = seedInput;
+
+    // ====== 🛎️ 生成随机种子按钮 ======
+    // 点击后：生成新随机种子填入种子输入框、切换为"⏸️ 固定模式"、刷新所有 🎲 预览。
+    // 这样种子值、按钮预览与后端 execute() 实际输出三者完全一致，便于复现。
+    const genSeedBtn = document.createElement("button");
+    genSeedBtn.className = "hezl-rtxt-btn";
+    genSeedBtn.textContent = "🛎️";
+    genSeedBtn.title = "生成随机种子（填入新种子、切换为固定模式、刷新所有词组预览）";
+    genSeedBtn.addEventListener("click", () => {
+        state.seed = Math.floor(Math.random() * 1000000000);
+        state.seed_mode = "fixed";
+        if (node._hezl_seed_input) node._hezl_seed_input.value = state.seed;
+        updateSeedBtn(node);
+        // 种子已变化，刷新 🎲 预览使其与 execute() 实际输出一致
+        renderItems(node);
+    });
+    node._hezl_gen_seed_btn = genSeedBtn;
 
     // 初始化按钮状态
     updateMergeBtn(node);
@@ -2096,25 +2398,32 @@ function buildUI(node) {
     // 顶部分两行：第一行=预设管理，第二行=批量操作+合并+种子
     const toolbarRow1 = document.createElement("div");
     toolbarRow1.className = "hezl-rtxt-toolbar-row";
-    toolbarRow1.appendChild(presetSelect);
-    toolbarRow1.appendChild(saveBtn);
-    toolbarRow1.appendChild(renameBtn);
-    toolbarRow1.appendChild(deleteBtn);
+    const presetGroup = document.createElement("div");
+    presetGroup.className = "hezl-rtxt-toolbar-group";
+    presetGroup.appendChild(presetSelect);
+    presetGroup.appendChild(saveBtn);
+    presetGroup.appendChild(renameBtn);
+    presetGroup.appendChild(deleteBtn);
+    toolbarRow1.appendChild(presetGroup);
 
     const toolbarRow2 = document.createElement("div");
     toolbarRow2.className = "hezl-rtxt-toolbar-row";
-    toolbarRow2.appendChild(removeAllBtn);
-    toolbarRow2.appendChild(allToggleBtn);
-    toolbarRow2.appendChild(allRandomBtn);
-    // 分隔线 | 合并随机输出 | 分隔线 | 种子
-    const div1 = document.createElement("div"); div1.className = "hezl-rtxt-sep-divider";
-    const div2 = document.createElement("div"); div2.className = "hezl-rtxt-sep-divider";
-    toolbarRow2.appendChild(div1);
-    toolbarRow2.appendChild(mergeBtn);
-    toolbarRow2.appendChild(mergeCountInput);
-    toolbarRow2.appendChild(div2);
-    toolbarRow2.appendChild(seedBtn);
-    toolbarRow2.appendChild(seedInput);
+    // 第一组：批量操作按钮
+    const batchGroup = document.createElement("div");
+    batchGroup.className = "hezl-rtxt-toolbar-group";
+    batchGroup.appendChild(removeAllBtn);
+    batchGroup.appendChild(allToggleBtn);
+    batchGroup.appendChild(allRandomBtn);
+    toolbarRow2.appendChild(batchGroup);
+    // 第二组：🗳️ + 数量输入框 + 微调按钮
+    toolbarRow2.appendChild(mergeGroup);
+    // 第三组：种子控件
+    const seedGroup = document.createElement("div");
+    seedGroup.className = "hezl-rtxt-toolbar-group";
+    seedGroup.appendChild(genSeedBtn);
+    seedGroup.appendChild(seedBtn);
+    seedGroup.appendChild(seedInput);
+    toolbarRow2.appendChild(seedGroup);
 
     toolbar.appendChild(toolbarRow1);
     toolbar.appendChild(toolbarRow2);
@@ -2178,6 +2487,7 @@ app.registerExtension({
     async init() {
         // 拦截 queuePrompt：在随机种子模式下，每次执行前生成新种子并显示在输入框
         // 这样 PNG 元数据中保存的 config 会包含本次使用的种子，拖放图片复现时种子一致
+        // 同时刷新词组按钮预览，使预览与本次实际输出一致
         const origQueuePrompt = app.queuePrompt;
         app.queuePrompt = function (...args) {
             try {
@@ -2189,6 +2499,8 @@ app.registerExtension({
                             if (st.seed_mode === "random") {
                                 st.seed = Math.floor(Math.random() * 1000000000);
                                 if (n._hezl_seed_input) n._hezl_seed_input.value = st.seed;
+                                // 种子已更新，刷新 🎲 预览使其与本次执行输出一致
+                                renderItems(n);
                             }
                         }
                     }

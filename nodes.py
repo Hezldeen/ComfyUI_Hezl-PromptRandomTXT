@@ -88,7 +88,12 @@ async def get_tree(request):
 
 @PromptServer.instance.routes.get("/hezl_randomtxt/file")
 async def get_file(request):
-    """读取指定 txt 文件内容（按行返回），并尝试加载同名 .tr 旁路翻译文件（适配任意语言）"""
+    """读取指定 txt 文件内容（按行返回），并尝试加载同名 .tr 旁路翻译文件（适配任意语言）。
+
+    与 execute() 保持一致：对每行做 strip() 并过滤空行，.tr 按 .txt 的非空行对齐。
+    这样前端缓存的 lines 与后端 execute() 使用的 lines 完全一致，
+    使前端能够基于种子预计算随机选取结果（词组按钮预览）。
+    """
     try:
         rel_path = request.query.get("path", "")
         full = _resolve_txt_path(rel_path)
@@ -96,16 +101,26 @@ async def get_file(request):
             return web.json_response({"error": "File not found"}, status=404)
         with open(full, "r", encoding="utf-8") as f:
             content = f.read()
-        lines = content.split("\n")
+        raw_lines = content.split("\n")
         # 旁路翻译：同名 .txt.tr 文件（行与原文 txt 一一对应，无则返回空数组）
-        tr_lines = []
+        raw_tr = []
         tr_full = _resolve_txt_path(rel_path + ".tr")
         if tr_full and os.path.isfile(tr_full):
             try:
                 with open(tr_full, "r", encoding="utf-8") as f:
-                    tr_lines = f.read().split("\n")
+                    raw_tr = f.read().split("\n")
             except Exception:
-                tr_lines = []
+                raw_tr = []
+        # strip + 过滤空行（与 execute() 一致），.tr 按 .txt 非空行对齐
+        lines = []
+        tr_lines = []
+        for i, raw in enumerate(raw_lines):
+            stripped = raw.strip()
+            if not stripped:
+                continue
+            lines.append(stripped)
+            tr_line = raw_tr[i].strip() if i < len(raw_tr) else ""
+            tr_lines.append(tr_line)
         return web.json_response({"lines": lines, "tr_lines": tr_lines})
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
@@ -267,13 +282,11 @@ class HezlRandomTXT:
             cfg = {}
 
         # ====== 种子控制 ======
-        # seed_mode: "random"=每次随机, "fixed"=固定种子可复现
-        seed_mode = cfg.get("seed_mode", "random")
+        # 始终使用 seed 构建 RNG：前端在"随机模式"下每次执行前生成新种子并写入 config，
+        # "固定模式"下保持种子不变。这样 PNG 元数据中保存的 seed 即为实际使用的种子，
+        # 拖放图片复现时输出完全一致；前端也可基于同一 seed 预计算随机选取结果。
         seed = int(cfg.get("seed", 0))
-        if seed_mode == "fixed":
-            rng = random.Random(seed)
-        else:
-            rng = random.Random()
+        rng = random.Random(seed)
 
         # ====== 合并随机输出模式 ======
         # merge_enabled: 开启后从所有已启用txt的词组池中随机选取 merge_count 个输出
