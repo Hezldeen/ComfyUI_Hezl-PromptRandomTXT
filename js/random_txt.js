@@ -355,13 +355,19 @@ function injectCSS() {
     line-height: 1;
     opacity: 0.5;
 }
-.hezl-dice.active {
+.hezl-dice.dice-active {
     opacity: 1;
     background: #4a8;
     border-color: #6c9;
 }
+.hezl-dice.dice-fixed {
+    opacity: 1;
+    background: #844;
+    border-color: #c66;
+    color: #fff;
+}
 .hezl-dice:hover { opacity: 0.85; }
-.hezl-dice.active:hover { opacity: 1; }
+.hezl-dice.dice-active:hover { opacity: 1; }
 .hezl-item-line-btn {
     width: 200px;
     flex-shrink: 0;
@@ -378,7 +384,6 @@ function injectCSS() {
     white-space: nowrap;
 }
 .hezl-item-line-btn:hover { border-color: #6c9; }
-.hezl-item-line-btn.random-active { border: 1px solid red; }
 .hezl-item-remove {
     width: 18px;
     height: 18px;
@@ -395,34 +400,59 @@ function injectCSS() {
 .hezl-items-empty { padding: 12px; color: #888; text-align: center; font-style: italic; }
 .hezl-drag-handle { color: #666; cursor: grab; flex-shrink: 0; user-select: none; }
 
-/* ===== 弹窗 ===== */
-.hezl-modal-overlay {
+/* ===== 轻量下拉小弹窗（锚定到触发元素）===== */
+.hezl-popover {
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 100000;
-}
-.hezl-modal {
-    position: fixed;
-    width: 420px;
-    max-width: 90vw;
-    max-height: 60vh;
-    background: var(--comfy-menu-bg, #1e1e1e);
-    border: 1px solid var(--border-color, #555);
+    background: #2a2a2a;
+    border: 1px solid #555;
     border-radius: 6px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    padding: 10px;
+    z-index: 10001;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    min-width: 200px;
+    max-width: 340px;
+    max-height: 70vh;
+    overflow-y: auto;
+    color: #ddd;
+    font-size: 13px;
 }
-.hezl-modal-header {
+.hezl-popover-header {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 6px;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--border-color, #444);
+    margin-bottom: 8px;
     font-weight: bold;
-    color: var(--input-text, #ddd);
+    color: #eee;
+    cursor: grab;
+    user-select: none;
 }
+.hezl-popover-header.dragging { cursor: grabbing; }
+.hezl-popover-close {
+    background: none;
+    border: none;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 4px;
+}
+.hezl-popover-close:hover { color: #fff; }
+.hezl-popover-toolbar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.hezl-popover-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    justify-content: flex-end;
+}
+.hezl-popover .hezl-form-input,
+.hezl-popover .hezl-form-textarea { box-sizing: border-box; }
+.hezl-popover .hezl-form-textarea { width: 100%; min-height: 64px; resize: vertical; }
+
+/* 弹窗内搜索框 */
 .hezl-modal-search {
     width: 100%;
     background: var(--comfy-input-bg, #333);
@@ -433,22 +463,7 @@ function injectCSS() {
     font-size: 12px;
     box-sizing: border-box;
 }
-.hezl-modal-close {
-    cursor: pointer;
-    background: transparent;
-    border: none;
-    color: #a66;
-    font-size: 18px;
-    line-height: 1;
-    padding: 0 4px;
-}
-.hezl-modal-close:hover { color: #f88; }
-.hezl-modal-list {
-    flex: 1;
-    overflow: auto;
-    padding: 4px;
-    position: relative;
-}
+/* 弹窗内列表项 */
 .hezl-modal-item {
     padding: 5px 8px;
     cursor: pointer;
@@ -466,6 +481,12 @@ function injectCSS() {
     font-weight: bold;
 }
 .hezl-modal-empty { padding: 16px; color: #888; text-align: center; font-style: italic; }
+/* 词组选择弹窗内的列表滚动区（独立滚动，保持头部与搜索框固定） */
+.hezl-popover-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 2px;
+}
 
 /* 间隔符按钮 */
 .hezl-item-sep-btn {
@@ -483,20 +504,14 @@ function injectCSS() {
 }
 .hezl-item-sep-btn:hover { opacity: 1; border-color: #6c9; }
 
-/* 间隔符弹窗 */
-.hezl-sep-modal { width: 360px; max-height: 80vh; }
-.hezl-sep-body {
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
+/* 间隔符弹窗内容（容器由 .hezl-popover 提供） */
 .hezl-sep-hint {
     color: #999;
     font-size: 11px;
     line-height: 1.5;
+    margin-bottom: 8px;
 }
-.hezl-sep-input-wrap { width: 100%; box-sizing: border-box; }
+.hezl-sep-input-wrap { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
 .hezl-sep-input {
     width: 100%;
     box-sizing: border-box;
@@ -512,14 +527,9 @@ function injectCSS() {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
+    margin-bottom: 4px;
 }
 .hezl-sep-quick-btn { font-size: 11px; padding: 2px 6px; }
-.hezl-sep-actions {
-    display: flex;
-    gap: 6px;
-    justify-content: flex-end;
-    margin-top: 2px;
-}
 `;
     document.head.appendChild(style);
 }
@@ -1410,11 +1420,11 @@ function updateSeedBtn(node) {
     if (state.seed_mode === "fixed") {
         btn.textContent = "⏸️";
         btn.title = "固定种子（相同种子输出相同结果，点击切换为随机）";
-        btn.className = "hezl-rtxt-btn all-on";
+        btn.className = "hezl-rtxt-btn all-off";
     } else {
         btn.textContent = "🔀";
         btn.title = "随机种子（每次执行都不同，点击切换为固定）";
-        btn.className = "hezl-rtxt-btn";
+        btn.className = "hezl-rtxt-btn all-on";
     }
 }
 
@@ -1427,6 +1437,9 @@ function updateSeedBtn(node) {
 //   - random 项调用 rng.choice(lines)，非 random 项用 lines[selected_line]
 //   - 合并模式下按钮不显示预计算（输出是 merge sample，非逐项）
 // 返回：与 state.items 等长的数组，元素为 { line, lineIndex } 或 null（无法预计算）
+// 预计算 🎲 随机模式下每个项将输出的行（与后端 execute 一致）。
+// 注：当前 UI 在 🎲 随机模式下不显示预览（词组按钮留空），此函数暂未被 renderItems 调用。
+// 保留以备未来恢复预览功能，或供其他需要预计算的场景使用。
 function computePreviewLines(node) {
     const state = getState(node);
     const result = new Array(state.items.length).fill(null);
@@ -1467,11 +1480,58 @@ function computePreviewLines(node) {
     return result;
 }
 
+// ============ 🛎️ 生成随机种子并应用到所有 item ============
+// 用 PyRandom(seed) 为每个启用的 item 预计算一个随机行索引（复刻 rng.choice），
+// 写入 item.selected_line，并将 item.random 设为 false（📌 固定模式）。
+// 这样：
+//   - 词组按钮显示随机选出的词组（📌 固定模式显示 selected_line）
+//   - 后端 execute() 因 random=false，输出 lines[selected_line]，与预览一致
+//   - 每次点击 🛎️ 生成新种子，selected_line 随之变化，词组按钮刷新
+// 合并模式下不逐项处理（输出是 merge sample，非逐项）。
+function applyRandomSeedToItems(node, seed) {
+    const state = getState(node);
+    if (state.merge_enabled) return;
+
+    let rng;
+    try {
+        rng = new PyRandom(seed);
+    } catch (e) {
+        return;
+    }
+
+    for (let i = 0; i < state.items.length; i++) {
+        const item = state.items[i];
+        if (!item.enabled) {
+            // 未启用项仍设为固定模式，但不消耗 RNG
+            item.random = false;
+            continue;
+        }
+        const lines = item.lines || [];
+        if (lines.length === 0) {
+            item.random = false;
+            continue;
+        }
+        // 复刻 rng.choice(lines) = lines[_randbelow(len(lines))]
+        try {
+            const idx = rng._randbelow(lines.length);
+            item.selected_line = idx;
+        } catch (e) {
+            // RNG 错误时保持原 selected_line
+        }
+        item.random = false;
+    }
+}
+
 // ============ 右侧列表渲染 ============
 function renderItems(node) {
     const state = getState(node);
     const container = node._hezl_items_el;
     if (!container) return;
+    // 保存滚动位置：container.innerHTML="" 会把 scrollTop/scrollLeft 重置为 0，
+    // 导致点击 🎲/📌、开关、删除等触发重渲染时，视口跳回首端（窄面板下尤其明显，
+    // 表现为"按钮跑到最左侧"）。重渲染后恢复原滚动位置即可消除该跳动。
+    const savedScrollTop = container.scrollTop;
+    const savedScrollLeft = container.scrollLeft;
     container.innerHTML = "";
 
     // 更新顶部按钮状态
@@ -1482,9 +1542,6 @@ function renderItems(node) {
         container.innerHTML = '<div class="hezl-items-empty">在左侧勾选 txt 文件后点击"添加"</div>';
         return;
     }
-
-    // 预计算 🎲 随机模式下每个项将输出的行（与后端 execute 一致）
-    const previews = computePreviewLines(node);
 
     const frag = document.createDocumentFragment();
     state.items.forEach((item, index) => {
@@ -1534,40 +1591,46 @@ function renderItems(node) {
         sep1.className = "hezl-sep";
         sep1.textContent = "|";
 
-        // 🎲/📌 随机模式按钮（🎲绿色底=随机开启，📌灰色底=随机关闭/固定）
+        // 🎲/📌 随机模式按钮（🎲绿色底=随机开启，📌红色底=固定模式）
         const diceBtn = document.createElement("button");
-        diceBtn.className = "hezl-dice" + (item.random ? " active" : "");
+        // 注意：类名不能用裸 "fixed"/"active"，会与 ComfyUI 全局 .fixed{position:fixed} 冲突，
+        // 导致固定模式下按钮被移出 flex 流跳到行首并重叠开关。改用命名空间化的 dice-active/dice-fixed。
+        diceBtn.className = "hezl-dice" + (item.random ? " dice-active" : " dice-fixed");
         diceBtn.textContent = item.random ? "🎲" : "📌";
         diceBtn.title = item.random ? "随机模式已开启（点击固定当前选择）" : "随机模式已关闭（点击开启随机选取一行）";
 
         // 词组选择按钮（点击弹窗）- 有译文时显示译文，悬停显示原文
-        // 🎲 开启时显示基于种子预计算的行（与后端 execute 输出一致），否则显示手动选择的行
+        // 🎲 随机模式：按钮为空（执行时由后端随机选取一行），点击仍可弹窗选择（不影响随机输出）
+        // 📌 固定模式：显示手动选择的行
         const lineBtn = document.createElement("button");
-        // 📌 固定模式时词组按钮边框为红色，提示用户关注手动选择的行
-        lineBtn.className = "hezl-item-line-btn" + (!item.random ? " random-active" : "");
-        const preview = previews[index];
-        // 生效行索引：🎲 开启且有预览时用预计算索引，否则用手动选择索引
-        const effIdx = (item.random && preview) ? preview.lineIndex : (item.selected_line || 0);
-        const hasEn = item.lines.length > 0 && effIdx < item.lines.length;
-        const enLine = hasEn ? item.lines[effIdx] : "";
-        const hasTr = item.tr_lines.length > 0 && effIdx < item.tr_lines.length
-            && item.tr_lines[effIdx].trim() !== "";
-        const trLine = hasTr ? item.tr_lines[effIdx] : "";
-        const displayLine = trLine || enLine || "(空)";
-        const displayText = displayLine.length > 35 ? displayLine.substring(0, 32) + "..." : displayLine;
-        lineBtn.textContent = displayText;
-        // 悬停显示完整内容：有译文时同时显示译文与原文，便于核对将输出的原文
-        lineBtn.title = !hasEn ? "(空) - 点击选择词组"
-            : (trLine ? `${trLine}\n${enLine}` : enLine);
-        lineBtn.addEventListener("click", (e) => openLineModal(node, index, e.currentTarget));
+        lineBtn.className = "hezl-item-line-btn";
+        if (item.random) {
+            // 🎲 随机模式：不显示具体词组，提示执行时随机输出
+            lineBtn.textContent = "";
+            lineBtn.title = "随机模式（执行时输出随机一行）- 点击可选择词组";
+        } else {
+            // 📌 固定模式：显示已选词组
+            const selIdx = item.selected_line || 0;
+            const hasEn = item.lines.length > 0 && selIdx < item.lines.length;
+            const enLine = hasEn ? item.lines[selIdx] : "";
+            const hasTr = item.tr_lines.length > 0 && selIdx < item.tr_lines.length
+                && item.tr_lines[selIdx].trim() !== "";
+            const trLine = hasTr ? item.tr_lines[selIdx] : "";
+            const displayLine = trLine || enLine || "(空)";
+            const displayText = displayLine.length > 35 ? displayLine.substring(0, 32) + "..." : displayLine;
+            lineBtn.textContent = displayText;
+            // 悬停显示完整内容：有译文时同时显示译文与原文，便于核对将输出的原文
+            lineBtn.title = !hasEn ? "(空) - 点击选择词组"
+                : (trLine ? `${trLine}\n${enLine}` : enLine);
+        }
+        lineBtn.addEventListener("click", (e) => openLinePopover(node, index, e.currentTarget));
 
-        // 随机按钮点击：切换 🎲/📌 并重新渲染（切换会改变 RNG 消耗顺序，影响后续所有项的预览）
+        // 随机按钮点击：切换 🎲/📌 并重新渲染
         diceBtn.addEventListener("click", () => {
             item.random = !item.random;
-            diceBtn.classList.toggle("active", item.random);
+            diceBtn.classList.toggle("dice-active", item.random);
+            diceBtn.classList.toggle("dice-fixed", !item.random);
             diceBtn.textContent = item.random ? "🎲" : "📌";
-            // 📌 固定模式时词组按钮边框为红色
-            lineBtn.classList.toggle("random-active", !item.random);
             diceBtn.title = item.random ? "随机模式已开启（点击固定当前选择）" : "随机模式已关闭（点击开启随机选取一行）";
             renderItems(node);
         });
@@ -1583,7 +1646,7 @@ function renderItems(node) {
         const curSep = item.separator ?? ",";
         sepBtn.title = "自定义与下个txt之间的间隔符号\n当前: " + sepToDisplay(curSep)
             + (index === state.items.length - 1 ? "\n（这是最后一项，间隔符不会生效）" : "");
-        sepBtn.addEventListener("click", (e) => openSeparatorModal(node, index, e.currentTarget));
+        sepBtn.addEventListener("click", (e) => openSeparatorPopover(node, index, e.currentTarget));
 
         // 删除按钮
         const removeBtn = document.createElement("button");
@@ -1620,6 +1683,9 @@ function renderItems(node) {
         frag.appendChild(itemWrap);
     });
     container.appendChild(frag);
+    // 恢复重渲染前的滚动位置，避免视口跳动
+    container.scrollTop = savedScrollTop;
+    container.scrollLeft = savedScrollLeft;
 }
 
 // ============ 右侧txt文件框右键菜单 ============
@@ -1738,46 +1804,157 @@ function setupItemDrag(row, node) {
     });
 }
 
-// ============ 词组选择弹窗 ============
-let currentModal = null;
-function openLineModal(node, itemIndex, btnEl) {
-    closeLineModal();
+// ============ 轻量下拉小弹窗（锚定到触发元素）============
+let currentPopover = null;
+let popoverOutsideHandler = null;
+let popoverEscHandler = null;
+let popoverScrollHandler = null;
+
+function closePopover() {
+    if (currentPopover) {
+        currentPopover.remove();
+        currentPopover = null;
+    }
+    if (popoverOutsideHandler) {
+        document.removeEventListener("mousedown", popoverOutsideHandler, true);
+        popoverOutsideHandler = null;
+    }
+    if (popoverEscHandler) {
+        document.removeEventListener("keydown", popoverEscHandler, true);
+        popoverEscHandler = null;
+    }
+    if (popoverScrollHandler) {
+        document.removeEventListener("scroll", popoverScrollHandler, true);
+        popoverScrollHandler = null;
+    }
+}
+
+// 将弹窗锚定到触发按钮下方（下方空间不足且上方足够时翻到上方），并贴边校正
+function positionPopover(popover, btnEl) {
+    // 用户已手动拖拽过：不再重新锚定按钮，仅做贴边校正保持弹窗在视口内
+    if (popover._userMoved) {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const pw = popover.offsetWidth;
+        const ph = popover.offsetHeight;
+        let left = parseFloat(popover.style.left) || 0;
+        let top = parseFloat(popover.style.top) || 0;
+        if (left + pw > vw - 4) left = vw - pw - 4;
+        if (left < 4) left = 4;
+        if (top + ph > vh - 4) top = Math.max(4, vh - ph - 4);
+        if (top < 4) top = 4;
+        popover.style.left = left + "px";
+        popover.style.top = top + "px";
+        return;
+    }
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pw = popover.offsetWidth;
+    const ph = popover.offsetHeight;
+    let left, top;
+    if (btnEl && btnEl.getBoundingClientRect) {
+        const r = btnEl.getBoundingClientRect();
+        left = r.left;
+        top = r.bottom + 4;
+        // 下方放不下且上方放得下 → 翻到按钮上方
+        if (top + ph > vh - 4 && r.top - ph - 4 > 4) {
+            top = r.top - ph - 4;
+        }
+    } else {
+        left = (vw - pw) / 2;
+        top = (vh - ph) / 2;
+    }
+    if (left + pw > vw - 4) left = vw - pw - 4;
+    if (left < 4) left = 4;
+    if (top + ph > vh - 4) top = Math.max(4, vh - ph - 4);
+    if (top < 4) top = 4;
+    popover.style.left = left + "px";
+    popover.style.top = top + "px";
+}
+
+// 绑定外部点击 / Esc / 外部滚动关闭（弹窗内部滚动不触发关闭）
+function bindPopoverClose(popover, triggerEl) {
+    popoverOutsideHandler = (e) => {
+        if (popover.contains(e.target)) return;
+        if (triggerEl && triggerEl.contains(e.target)) return;
+        closePopover();
+    };
+    popoverEscHandler = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); closePopover(); }
+    };
+    popoverScrollHandler = (e) => {
+        // 弹窗内部滚动（如词组列表）不关闭；其余滚动（画布/列表外层）会令弹窗与按钮错位，直接关闭
+        if (popover.contains(e.target)) return;
+        closePopover();
+    };
+    document.addEventListener("mousedown", popoverOutsideHandler, true);
+    document.addEventListener("keydown", popoverEscHandler, true);
+    document.addEventListener("scroll", popoverScrollHandler, true);
+}
+
+// 让弹窗可通过拖拽顶部 header 移动位置；拖拽后标记 _userMoved，后续 positionPopover 只做贴边校正不再跳回按钮下方
+function makePopoverDraggable(popover, header) {
+    header.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return; // 仅左键
+        if (e.target.closest(".hezl-popover-close")) return; // 关闭按钮不触发拖拽
+        e.preventDefault();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startLeft = parseFloat(popover.style.left) || 0;
+        const startTop = parseFloat(popover.style.top) || 0;
+        popover._userMoved = true;
+        header.classList.add("dragging");
+        document.body.style.userSelect = "none";
+        function onMove(ev) {
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const pw = popover.offsetWidth;
+            let nl = startLeft + (ev.clientX - startX);
+            let nt = startTop + (ev.clientY - startY);
+            // 至少保留 60px 宽度与 header 可见，保证能拖回
+            nl = Math.max(60 - pw, Math.min(vw - 60, nl));
+            nt = Math.max(0, Math.min(vh - 40, nt));
+            popover.style.left = nl + "px";
+            popover.style.top = nt + "px";
+        }
+        function onUp() {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            header.classList.remove("dragging");
+            document.body.style.userSelect = "";
+        }
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+    });
+}
+
+// ============ 词组选择下拉弹窗 ============
+function openLinePopover(node, itemIndex, btnEl) {
+    closePopover();
     const state = getState(node);
     const item = state.items[itemIndex];
     if (!item) return;
 
-    const overlay = document.createElement("div");
-    overlay.className = "hezl-modal-overlay";
-
-    const modal = document.createElement("div");
-    modal.className = "hezl-modal";
+    const popover = document.createElement("div");
+    popover.className = "hezl-popover";
 
     // 头部
     const header = document.createElement("div");
-    header.className = "hezl-modal-header";
-
+    header.className = "hezl-popover-header";
     const title = document.createElement("span");
     title.style.flex = "1";
     title.textContent = item.name + " - 选择词组"
         + ((item.tr_lines || []).length > 0 ? "（译文显示/原文输出）" : "");
-
     const closeBtn = document.createElement("button");
-    closeBtn.className = "hezl-modal-close";
+    closeBtn.className = "hezl-popover-close";
     closeBtn.textContent = "×";
     closeBtn.title = "关闭";
-
     header.appendChild(title);
     header.appendChild(closeBtn);
 
-    // 搜索栏
-    const searchWrap = document.createElement("div");
-    searchWrap.style.padding = "6px 10px";
-    searchWrap.style.borderBottom = "1px solid var(--border-color, #444)";
-    searchWrap.style.display = "flex";
-    searchWrap.style.gap = "4px";
-    searchWrap.style.alignItems = "center";
-
-    // 🌏️ 原文/译文切换按钮（默认显示译文，切换后显示原文）
+    // 工具栏：🌏️ 原文/译文切换 + 搜索框
+    const toolbar = document.createElement("div");
+    toolbar.className = "hezl-popover-toolbar";
     const hasTr = (item.tr_lines || []).some(l => l.trim());
     let showOriginal = false; // false=显示译文(.tr), true=显示原文(.txt)
     const toggleBtn = document.createElement("button");
@@ -1787,31 +1964,32 @@ function openLineModal(node, itemIndex, btnEl) {
     toggleBtn.style.flexShrink = "0";
     if (!hasTr) toggleBtn.style.opacity = "0.4";
     toggleBtn.disabled = !hasTr;
+    const searchInput = document.createElement("input");
+    searchInput.type = "text";
+    searchInput.className = "hezl-modal-search";
+    searchInput.placeholder = "搜索词组...";
+    toolbar.appendChild(toggleBtn);
+    toolbar.appendChild(searchInput);
+
+    // 列表（独立滚动区，保持头部与搜索框固定）
+    const listEl = document.createElement("div");
+    listEl.className = "hezl-popover-list";
+
+    popover.appendChild(header);
+    popover.appendChild(toolbar);
+    popover.appendChild(listEl);
+    document.body.appendChild(popover);
+    currentPopover = popover;
+    makePopoverDraggable(popover, header);
+
     toggleBtn.addEventListener("click", () => {
         showOriginal = !showOriginal;
         toggleBtn.title = showOriginal ? "当前显示原文，点击切换为译文" : "当前显示译文，点击切换为原文";
         toggleBtn.classList.toggle("all-on", showOriginal);
         renderList(searchInput.value);
+        // 切换后内容高度可能变化，重新定位
+        positionPopover(popover, btnEl);
     });
-
-    const searchInput = document.createElement("input");
-    searchInput.type = "text";
-    searchInput.className = "hezl-modal-search";
-    searchInput.placeholder = "搜索词组...";
-    searchWrap.appendChild(toggleBtn);
-    searchWrap.appendChild(searchInput);
-
-    // 列表
-    const listEl = document.createElement("div");
-    listEl.className = "hezl-modal-list";
-
-    modal.appendChild(header);
-    modal.appendChild(searchWrap);
-    modal.appendChild(listEl);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    currentModal = overlay;
 
     const MAX_RENDER = 2000;
     function renderList(filter) {
@@ -1843,7 +2021,7 @@ function openLineModal(node, itemIndex, btnEl) {
             const idx = i;
             itemEl.addEventListener("click", () => {
                 item.selected_line = idx;
-                closeLineModal();
+                closePopover();
                 renderItems(node);
             });
             frag.appendChild(itemEl);
@@ -1868,48 +2046,20 @@ function openLineModal(node, itemIndex, btnEl) {
     }
 
     renderList("");
-    // 渲染列表后再定位弹窗，确保使用真实高度
-    positionModal(modal, btnEl);
-
+    // 渲染列表后再定位弹窗，确保使用真实高度；定位后再次把选中项滚到可视中
+    positionPopover(popover, btnEl);
     // 搜索防抖，避免大量词组时输入卡顿
     let searchTimer = null;
     searchInput.addEventListener("input", () => {
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => renderList(searchInput.value), 150);
+        searchTimer = setTimeout(() => {
+            renderList(searchInput.value);
+            positionPopover(popover, btnEl);
+        }, 150);
     });
-    closeBtn.addEventListener("click", closeLineModal);
-    overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) closeLineModal();
-    });
+    closeBtn.addEventListener("click", closePopover);
+    bindPopoverClose(popover, btnEl);
     searchInput.focus();
-}
-
-// 将弹窗定位到触发按钮附近（用户当前浏览区域中心）
-function positionModal(modal, btnEl) {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const mw = modal.offsetWidth;
-    const mh = modal.offsetHeight;
-    let left, top;
-    if (btnEl && btnEl.getBoundingClientRect) {
-        const r = btnEl.getBoundingClientRect();
-        left = r.left + r.width / 2 - mw / 2;
-        top = r.top + r.height / 2 - mh / 2;
-    } else {
-        left = (vw - mw) / 2;
-        top = (vh - mh) / 2;
-    }
-    left = Math.max(8, Math.min(vw - mw - 8, left));
-    top = Math.max(8, Math.min(vh - mh - 8, top));
-    modal.style.left = left + "px";
-    modal.style.top = top + "px";
-}
-
-function closeLineModal() {
-    if (currentModal) {
-        currentModal.remove();
-        currentModal = null;
-    }
 }
 
 // ============ 间隔符弹窗 ============
@@ -1935,34 +2085,27 @@ function displayToSep(text) {
     return out;
 }
 
-function openSeparatorModal(node, itemIndex, btnEl) {
-    closeLineModal();
+function openSeparatorPopover(node, itemIndex, btnEl) {
+    closePopover();
     const state = getState(node);
     const item = state.items[itemIndex];
     if (!item) return;
 
-    const overlay = document.createElement("div");
-    overlay.className = "hezl-modal-overlay";
-
-    const modal = document.createElement("div");
-    modal.className = "hezl-modal hezl-sep-modal";
+    const popover = document.createElement("div");
+    popover.className = "hezl-popover";
 
     // 头部
     const header = document.createElement("div");
-    header.className = "hezl-modal-header";
+    header.className = "hezl-popover-header";
     const title = document.createElement("span");
     title.style.flex = "1";
     title.textContent = `间隔符号 - ${item.name}`;
     const closeBtn = document.createElement("button");
-    closeBtn.className = "hezl-modal-close";
+    closeBtn.className = "hezl-popover-close";
     closeBtn.textContent = "×";
     closeBtn.title = "关闭";
     header.appendChild(title);
     header.appendChild(closeBtn);
-
-    // 主体
-    const body = document.createElement("div");
-    body.className = "hezl-sep-body";
 
     const hint = document.createElement("div");
     hint.className = "hezl-sep-hint";
@@ -2003,7 +2146,7 @@ function openSeparatorModal(node, itemIndex, btnEl) {
 
     // 操作按钮
     const actions = document.createElement("div");
-    actions.className = "hezl-sep-actions";
+    actions.className = "hezl-popover-actions";
     const okBtn = document.createElement("button");
     okBtn.type = "button";
     okBtn.className = "hezl-rtxt-btn primary";
@@ -2015,35 +2158,31 @@ function openSeparatorModal(node, itemIndex, btnEl) {
     actions.appendChild(okBtn);
     actions.appendChild(cancelBtn);
 
-    body.appendChild(hint);
-    body.appendChild(inputWrap);
-    body.appendChild(quick);
-    body.appendChild(actions);
-
-    modal.appendChild(header);
-    modal.appendChild(body);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    currentModal = overlay;
+    popover.appendChild(header);
+    popover.appendChild(hint);
+    popover.appendChild(inputWrap);
+    popover.appendChild(quick);
+    popover.appendChild(actions);
+    document.body.appendChild(popover);
+    currentPopover = popover;
+    makePopoverDraggable(popover, header);
 
     function commit() {
         item.separator = displayToSep(input.value);
-        closeLineModal();
+        closePopover();
         renderItems(node);
     }
     okBtn.addEventListener("click", commit);
-    cancelBtn.addEventListener("click", closeLineModal);
-    closeBtn.addEventListener("click", closeLineModal);
+    cancelBtn.addEventListener("click", closePopover);
+    closeBtn.addEventListener("click", closePopover);
     input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") { e.preventDefault(); commit(); }
-        else if (e.key === "Escape") { e.preventDefault(); closeLineModal(); }
+        else if (e.key === "Escape") { e.preventDefault(); closePopover(); }
     });
-    overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) closeLineModal();
-    });
+    bindPopoverClose(popover, btnEl);
 
     // 定位（基于真实高度）
-    positionModal(modal, btnEl);
+    positionPopover(popover, btnEl);
     input.focus();
     input.select();
 }
@@ -2380,13 +2519,15 @@ function buildUI(node) {
     const genSeedBtn = document.createElement("button");
     genSeedBtn.className = "hezl-rtxt-btn";
     genSeedBtn.textContent = "🛎️";
-    genSeedBtn.title = "生成随机种子（填入新种子、切换为固定模式、刷新所有词组预览）";
+    genSeedBtn.title = "生成随机种子：填入新种子、所有 txt 切换为 📌 固定模式、词组按钮显示随机选出的词组（每次点击词组随种子变化）";
     genSeedBtn.addEventListener("click", () => {
         state.seed = Math.floor(Math.random() * 1000000000);
         state.seed_mode = "fixed";
         if (node._hezl_seed_input) node._hezl_seed_input.value = state.seed;
         updateSeedBtn(node);
-        // 种子已变化，刷新 🎲 预览使其与 execute() 实际输出一致
+        // 用新种子为所有 item 预计算随机行索引写入 selected_line，并切换为 📌 固定模式
+        // 这样词组按钮显示随机选出的词组，后端 execute() 输出与预览一致
+        applyRandomSeedToItems(node, state.seed);
         renderItems(node);
     });
     node._hezl_gen_seed_btn = genSeedBtn;
