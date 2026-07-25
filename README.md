@@ -2,8 +2,6 @@
 Comfyui随机输出TXT文件其中一行为字符.Comfyui randomly outputs a line of characters from a TXT file  
 ![image](README_Img/260722.png)
 
-# BUG修复
-1. 单个txt文件框的随机模式已开启时,词组选择按钮边框变为红色.
 
 ## 功能使用
 
