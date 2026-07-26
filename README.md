@@ -198,6 +198,11 @@ ComfyUI_Hezl-PromptRandomTXT/
 11. 🎲 随机模式词组按钮显示为空。
     - 🎲 随机模式时词组按钮显示为空（执行时随机选一行，不显示预览）；📌 固定模式时显示已选词组。
     - 在 🎲 随机模式下点词组按钮选词组，自动切到 📌 固定模式并显示选中词组（`openLinePopover` 选词组后设 `item.random=false`）。
+12. 词组选择按钮宽度缩短。
+    - `.hezl-item-line-btn` 宽度由 200px 改为 100px，右侧单行固定宽度子元素总和从约 366px 降到约 266px，窄面板下更不易横向溢出。
+13. 修复加载已有分组的节点时多出一个"默认分组"的 BUG。
+    - 根因：`restoreState` 是 async 函数（含 `await fetchFile`），原实现在开头执行 `state.groups = []` 清空数组，然后异步等待网络。此时 `buildUI` 的初始化 IIFE（`await fetchTree()` 完成后调 `renderGroups`）会看到空数组，触发 `renderGroups` 内 `if (state.groups.length === 0)` 误添一个"默认分组"。等 `restoreState` 的 `fetchFile` 完成后把保存的分组 push 进去，结果就多了一个"默认分组"。
+    - 修复：`restoreState` 不再在开头清空 `state.groups`，改为在本地 `newGroups` 数组中构建完整分组（含所有异步 `fetchFile`），全部完成后再原子赋值 `state.groups = newGroups`。异步等待期间 `state.groups` 始终保持旧值，`renderGroups` 不会误添默认分组。
 
 ### 260724
 1. 修复切换到 📌 固定模式时 📌 按钮跑到 ⋮⋮ 拖拽手柄位置并与 🟢/🔴 开关重叠的 BUG。

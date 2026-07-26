@@ -888,7 +888,9 @@ function serializeConfigStr(node) {
 
 async function restoreState(node, stateObj) {
     const state = getState(node);
-    state.groups = [];
+    // 注意：不能在此处清空 state.groups。restoreState 是 async（含 await fetchFile），
+    // 若先清空，buildUI 的 IIFE 中 renderGroups 会在异步等待期间看到空数组并误添"默认分组"。
+    // 改为先在本地 newGroups 中构建完整分组，所有 fetchFile 完成后原子赋值给 state.groups。
     // 旧格式兼容：顶层有 items 无 groups → 包装成单个默认分组
     let groupsData;
     if (stateObj && stateObj.items && !stateObj.groups) {
@@ -904,6 +906,7 @@ async function restoreState(node, stateObj) {
     } else {
         groupsData = (stateObj && stateObj.groups) || [];
     }
+    const newGroups = [];
     for (const gd of groupsData) {
         const group = createGroup(gd.name || "分组");
         group.seed = gd.seed || 0;
@@ -931,8 +934,10 @@ async function restoreState(node, stateObj) {
             } catch (e) { newItem.lines = []; newItem.tr_lines = []; }
             group.items.push(newItem);
         }
-        state.groups.push(group);
+        newGroups.push(group);
     }
+    // 所有异步 fetchFile 完成后，原子替换 state.groups
+    state.groups = newGroups;
     if (state.groups.length === 0) {
         state.groups.push(createGroup("默认分组"));
     }
