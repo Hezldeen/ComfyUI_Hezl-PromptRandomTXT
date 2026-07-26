@@ -281,74 +281,104 @@ class HezlRandomTXT:
         except Exception:
             cfg = {}
 
-        # ====== 种子控制 ======
-        # 始终使用 seed 构建 RNG：前端在"随机模式"下每次执行前生成新种子并写入 config，
-        # "固定模式"下保持种子不变。这样 PNG 元数据中保存的 seed 即为实际使用的种子，
-        # 拖放图片复现时输出完全一致；前端也可基于同一 seed 预计算随机选取结果。
-        seed = int(cfg.get("seed", 0))
-        rng = random.Random(seed)
+        # ====== 旧格式兼容 ======
+        # 旧 config 顶层为 {seed, merge_enabled, merge_count, items:[...]}（单组扁平结构）。
+        # 新 config 顶层为 {groups:[{name, seed, seed_mode, merge_enabled, merge_count, separator, items:[...]}]}。
+        # 检测到旧格式（有 items 无 groups）时包装成单个默认分组，保证旧预设/PNG 元数据可执行。
+        if "items" in cfg and "groups" not in cfg:
+            groups = [{
+                "name": "默认分组",
+                "seed": cfg.get("seed", 0),
+                "seed_mode": cfg.get("seed_mode", "random"),
+                "merge_enabled": cfg.get("merge_enabled", False),
+                "merge_count": cfg.get("merge_count", 1),
+                "separator": ", ",
+                "items": cfg.get("items", []),
+            }]
+        else:
+            groups = cfg.get("groups", [])
 
-        # ====== 合并随机输出模式 ======
-        # merge_enabled: 开启后从所有已启用txt的词组池中随机选取 merge_count 个输出
-        merge_enabled = bool(cfg.get("merge_enabled", False))
-        merge_count = int(cfg.get("merge_count", 1))
-        if merge_count < 1:
-            merge_count = 1
+        # ====== 逐组处理，每组独立 seed / 合并 / 拼接 ======
+        # 每组用各自 seed 构建 RNG：前端在"随机模式"下每次执行前为该组生成新种子并写入 config，
+        # "固定模式"下保持不变。PNG 元数据中保存的 seed 即各组实际使用的种子，拖放复现一致。
+        group_outputs = []  # [(group_out, group_separator)] 仅收集非空组
 
-        # 收集已启用项
-        enabled = []  # [(line, sep_after)]
-        all_lines_pool = []  # 合并模式的词组池
+        for group in groups:
+            seed = int(group.get("seed", 0))
+            rng = random.Random(seed)
 
-        for item in cfg.get("items", []):
-            if not item.get("enabled", False):
-                continue
+            # 合并随机输出模式（组内独立）：从本组已启用txt的词组池随机选取 N 个
+            merge_enabled = bool(group.get("merge_enabled", False))
+            merge_count = int(group.get("merge_count", 1))
+            if merge_count < 1:
+                merge_count = 1
 
-            rel_path = item.get("path", "")
-            full = _resolve_txt_path(rel_path)
-            if full is None or not os.path.isfile(full):
-                continue
+            enabled = []  # [(line, sep_after)]
+            all_lines_pool = []  # 本组词组池
 
-            try:
-                with open(full, "r", encoding="utf-8") as f:
-                    lines = [l.strip() for l in f.read().split("\n") if l.strip()]
-            except Exception:
-                continue
+            for item in group.get("items", []):
+                if not item.get("enabled", False):
+                    continue
 
-            if not lines:
-                continue
+                rel_path = item.get("path", "")
+                full = _resolve_txt_path(rel_path)
+                if full is None or not os.path.isfile(full):
+                    continue
 
-            # 合并模式：收集所有词组到池中
-            all_lines_pool.extend(lines)
+                try:
+                    with open(full, "r", encoding="utf-8") as f:
+                        lines = [l.strip() for l in f.read().split("\n") if l.strip()]
+                except Exception:
+                    continue
 
-            # 常规模式：选取输出行
-            if item.get("random", False):
-                line = rng.choice(lines)
+                if not lines:
+                    continue
+
+                all_lines_pool.extend(lines)
+
+                if item.get("random", False):
+                    line = rng.choice(lines)
+                else:
+                    idx = int(item.get("selected_line", 0))
+                    if idx < 0 or idx >= len(lines):
+                        idx = 0
+                    line = lines[idx]
+
+                sep = item.get("separator", ",")
+                if sep is None:
+                    sep = ","
+                enabled.append((line, sep))
+
+            # ====== 组内输出 ======
+            if merge_enabled:
+                if not all_lines_pool:
+                    group_out = ""
+                else:
+                    n = min(merge_count, len(all_lines_pool))
+                    group_out = ", ".join(rng.sample(all_lines_pool, n))
             else:
-                idx = int(item.get("selected_line", 0))
-                if idx < 0 or idx >= len(lines):
-                    idx = 0
-                line = lines[idx]
+                if not enabled:
+                    group_out = ""
+                else:
+                    parts = []
+                    for i, (line, sep) in enumerate(enabled):
+                        parts.append(line)
+                        if i < len(enabled) - 1:
+                            parts.append(sep)
+                    group_out = "".join(parts)
 
-            sep = item.get("separator", ",")
-            if sep is None:
-                sep = ","
-            enabled.append((line, sep))
+            if group_out:
+                gsep = group.get("separator", ", ")
+                if gsep is None:
+                    gsep = ", "
+                group_outputs.append((group_out, gsep))
 
-        # ====== 合并随机输出模式：从词组池随机选取 N 个 ======
-        if merge_enabled:
-            if not all_lines_pool:
-                return ("",)
-            n = min(merge_count, len(all_lines_pool))
-            selected = rng.sample(all_lines_pool, n)
-            return (", ".join(selected),)
-
-        # ====== 常规拼接模式 ======
-        if not enabled:
+        # ====== 组间拼接：各组输出按组顺序用各组 separator 连接成单 STRING ======
+        if not group_outputs:
             return ("",)
-
-        parts = []
-        for i, (line, sep) in enumerate(enabled):
-            parts.append(line)
-            if i < len(enabled) - 1:
-                parts.append(sep)
-        return ("".join(parts),)
+        result_parts = []
+        for i, (out, sep) in enumerate(group_outputs):
+            result_parts.append(out)
+            if i < len(group_outputs) - 1:
+                result_parts.append(sep)
+        return ("".join(result_parts),)

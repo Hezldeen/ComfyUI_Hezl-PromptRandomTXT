@@ -281,6 +281,107 @@ function injectCSS() {
     overflow: auto;
     padding: 4px;
 }
+
+/* ===== 右侧分组框（用边框区分不同分组，无折叠，可拖拽排序）===== */
+.hezl-group {
+    border: 1px solid var(--border-color, #555);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    background: var(--comfy-input-bg, #2a2a2a);
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.hezl-group.dragging { opacity: 0.4; }
+.hezl-group.group-drag-over { border-color: #6c9; box-shadow: 0 0 0 2px rgba(106,204,153,0.3); }
+.hezl-group-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 5px;
+    background: var(--comfy-menu-bg, #1e1e1e);
+    border-bottom: 1px solid var(--border-color, #444);
+    flex-wrap: wrap;
+}
+/* 拖拽手柄（拖动改变分组顺序）*/
+.hezl-group-handle {
+    cursor: grab;
+    color: #666;
+    user-select: none;
+    flex-shrink: 0;
+    padding: 0 2px;
+    font-size: 14px;
+    line-height: 1;
+}
+.hezl-group-handle:hover { color: #6c9; }
+.hezl-group-handle:active { cursor: grabbing; }
+/* 分组名 + ✏️ 重命名按钮容器（左侧一组，margin-right:auto 与右侧按钮隔开）*/
+.hezl-group-name-wrap {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 1 auto;      /* 名字占据动态宽度，可收缩 */
+    min-width: 40px;
+    margin-right: auto;  /* 推到左侧，与右侧工具栏按钮隔开 */
+}
+.hezl-group-name {
+    font-weight: bold;
+    color: #eee;
+    cursor: pointer;
+    padding: 0 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.hezl-group-name:hover { color: #6c9; }
+.hezl-group-rename-btn {
+    border: none;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 1px 3px;
+    line-height: 1;
+    flex-shrink: 0;
+    border-radius: 3px;
+}
+.hezl-group-rename-btn:hover { color: #6c9; background: rgba(106,204,153,0.15); }
+.hezl-group-toolbar {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+.hezl-group-body {
+    padding: 4px;
+    min-height: 30px;
+    max-height: 50vh;
+    overflow: auto;
+}
+/* item 拖拽时 body 可放置高亮（拖到空白区域追加到末尾）*/
+.hezl-group-body.body-drag-over {
+    background: rgba(106,204,153,0.12);
+}
+/* 分组框底部虚线 +分组 按钮 */
+.hezl-add-group-btn {
+    border: 2px dashed var(--border-color, #555);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--input-text, #ddd);
+    padding: 8px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 13px;
+    margin-bottom: 6px;
+    width: 100%;
+    box-sizing: border-box;
+}
+.hezl-add-group-btn:hover {
+    border-color: #6c9;
+    background: rgba(106,204,153,0.1);
+    color: #6c9;
+}
 .hezl-rtxt-item-wrap {
     display: flex;
     align-items: stretch;
@@ -369,7 +470,7 @@ function injectCSS() {
 .hezl-dice:hover { opacity: 0.85; }
 .hezl-dice.dice-active:hover { opacity: 1; }
 .hezl-item-line-btn {
-    width: 200px;
+    width: 100px;
     flex-shrink: 0;
     text-align: left;
     background: var(--comfy-input-bg, #333);
@@ -681,10 +782,24 @@ class PyRandom {
 // ============ 状态管理 ============
 const nodeStates = new WeakMap();
 
+// 创建一个新分组对象（每组独立 seed/合并/批量/分隔符）
+function createGroup(name) {
+    return {
+        name: name || "分组",
+        seed: 0,
+        seed_mode: "random",    // "random"=每次随机, "fixed"=固定种子
+        merge_enabled: false,   // 本组合并随机输出开关
+        merge_count: 1,         // 本组合并随机输出数量
+        separator: ", ",        // 本组输出与下一组输出之间的分隔符
+        collapsed: false,       // 前端折叠状态
+        items: [],              // {path, name, enabled, random, selected_line, separator, lines, tr_lines}
+    };
+}
+
 function getState(node) {
     if (!nodeStates.has(node)) {
         nodeStates.set(node, {
-            items: [],        // {path, name, enabled, random, selected_line, lines}
+            groups: [createGroup("默认分组")],  // 多分组结构，每组独立 seed/merge/items
             tree: null,
             presets: [],
             currentPreset: "",
@@ -694,10 +809,7 @@ function getState(node) {
             treeShiftSelected: {}, // path -> bool (shift多选临时高亮)
             lastSelectedPath: null, // 上次选中的txt路径（用于shift范围选）
             searchText: "",
-            merge_enabled: false,   // 合并随机输出开关
-            merge_count: 1,         // 合并随机输出数量
-            seed_mode: "random",    // "random"=每次随机, "fixed"=固定种子
-            seed: 0,                // 种子值
+            lastAddGroup: 0,    // 记住上次添加 txt 的目标分组索引
         });
     }
     return nodeStates.get(node);
@@ -752,18 +864,22 @@ async function deletePresetAPI(name) {
 function serializeState(node) {
     const state = getState(node);
     return {
-        items: state.items.map(it => ({
-            path: it.path,
-            name: it.name,
-            enabled: it.enabled,
-            random: it.random,
-            selected_line: it.selected_line,
-            separator: it.separator ?? ",",
+        groups: state.groups.map(g => ({
+            name: g.name,
+            seed: g.seed,
+            seed_mode: g.seed_mode,
+            merge_enabled: g.merge_enabled,
+            merge_count: g.merge_count,
+            separator: g.separator ?? ", ",
+            items: g.items.map(it => ({
+                path: it.path,
+                name: it.name,
+                enabled: it.enabled,
+                random: it.random,
+                selected_line: it.selected_line,
+                separator: it.separator ?? ",",
+            })),
         })),
-        merge_enabled: state.merge_enabled,
-        merge_count: state.merge_count,
-        seed_mode: state.seed_mode,
-        seed: state.seed,
     };
 }
 function serializeConfigStr(node) {
@@ -772,18 +888,37 @@ function serializeConfigStr(node) {
 
 async function restoreState(node, stateObj) {
     const state = getState(node);
-    state.items = [];
-    state.merge_enabled = !!(stateObj && stateObj.merge_enabled);
-    state.merge_count = (stateObj && stateObj.merge_count) || 1;
-    state.seed_mode = (stateObj && stateObj.seed_mode) || "random";
-    state.seed = (stateObj && stateObj.seed) || 0;
-    if (stateObj && stateObj.items) {
-        for (const item of stateObj.items) {
+    state.groups = [];
+    // 旧格式兼容：顶层有 items 无 groups → 包装成单个默认分组
+    let groupsData;
+    if (stateObj && stateObj.items && !stateObj.groups) {
+        groupsData = [{
+            name: "默认分组",
+            seed: stateObj.seed || 0,
+            seed_mode: stateObj.seed_mode || "random",
+            merge_enabled: !!(stateObj.merge_enabled),
+            merge_count: stateObj.merge_count || 1,
+            separator: ", ",
+            items: stateObj.items,
+        }];
+    } else {
+        groupsData = (stateObj && stateObj.groups) || [];
+    }
+    for (const gd of groupsData) {
+        const group = createGroup(gd.name || "分组");
+        group.seed = gd.seed || 0;
+        group.seed_mode = gd.seed_mode || "random";
+        group.merge_enabled = !!(gd.merge_enabled);
+        group.merge_count = gd.merge_count || 1;
+        group.separator = gd.separator ?? ", ";
+        group.collapsed = !!(gd.collapsed);
+        for (const item of (gd.items || [])) {
             const newItem = {
                 path: item.path,
-                name: item.name || item.path.split("/").pop(),
+                name: item.name || (item.path || "").split("/").pop(),
                 enabled: !!item.enabled,
-                random: !!item.random,
+                // random 默认值与 addItem 一致（true=🎲随机模式），避免旧预设无此字段时加载为 📌 固定模式导致与新建分组样式不一致
+                random: item.random === undefined ? true : !!item.random,
                 selected_line: item.selected_line || 0,
                 separator: item.separator ?? ",",
                 lines: [],
@@ -794,16 +929,14 @@ async function restoreState(node, stateObj) {
                 newItem.lines = f.lines;
                 newItem.tr_lines = f.trLines;
             } catch (e) { newItem.lines = []; newItem.tr_lines = []; }
-            state.items.push(newItem);
+            group.items.push(newItem);
         }
+        state.groups.push(group);
     }
-    renderItems(node);
-    // 同步合并/种子 UI
-    updateMergeBtn(node);
-    updateSeedBtn(node);
-    if (node._hezl_seed_input) node._hezl_seed_input.value = state.seed;
-    const mci = node._hezl_merge_btn?.parentElement?.querySelector("input.hezl-rtxt-num-input");
-    if (mci) mci.value = state.merge_count;
+    if (state.groups.length === 0) {
+        state.groups.push(createGroup("默认分组"));
+    }
+    renderGroups(node);
 }
 
 // ============ 递归收集文件夹下所有txt ============
@@ -840,10 +973,13 @@ function isFolderAllSelected(node, folderNode) {
     return paths.every(p => state.treeSelected[p]);
 }
 
-// ============ 添加文件到右侧 ============
-async function addItem(node, fileNode) {
+// ============ 添加文件到指定分组 ============
+async function addItem(node, fileNode, gi) {
     const state = getState(node);
-    if (state.items.some(it => it.path === fileNode.path)) return;
+    const group = state.groups[gi];
+    if (!group) return;
+    // 同分组内同路径不重复添加
+    if (group.items.some(it => it.path === fileNode.path)) return;
     const item = {
         path: fileNode.path,
         name: fileNode.name,
@@ -859,17 +995,100 @@ async function addItem(node, fileNode) {
         item.lines = f.lines;
         item.tr_lines = f.trLines;
     } catch (e) { item.lines = []; item.tr_lines = []; }
-    state.items.push(item);
-    renderItems(node);
+    group.items.push(item);
+    renderGroupItems(node, gi);
 }
 
-async function addSelectedFiles(node) {
+// 点击"添加"按钮：只有一个分组时直接添加，多个分组时弹选择小窗
+function addSelectedFiles(node, btnEl) {
     const state = getState(node);
     const selectedPaths = Object.keys(state.treeSelected).filter(k => state.treeSelected[k]);
     if (selectedPaths.length === 0) {
         alert("请先勾选要添加的 txt 文件");
         return;
     }
+    if (state.groups.length === 0) state.groups.push(createGroup("默认分组"));
+    // 仅一个分组：直接添加，无需选择
+    if (state.groups.length === 1) {
+        doAddSelectedFiles(node, 0);
+        return;
+    }
+    // 多个分组：弹分组选择小窗
+    openAddToGroupPopover(node, btnEl);
+}
+
+// 分组选择弹窗：选择目标分组后将勾选的 txt 添加进去；也可一键新建分组
+function openAddToGroupPopover(node, btnEl) {
+    closePopover();
+    const state = getState(node);
+
+    const popover = document.createElement("div");
+    popover.className = "hezl-popover";
+
+    const header = document.createElement("div");
+    header.className = "hezl-popover-header";
+    const title = document.createElement("span");
+    title.style.flex = "1";
+    title.textContent = "添加到分组";
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "hezl-popover-close";
+    closeBtn.textContent = "×";
+    closeBtn.title = "关闭";
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const hint = document.createElement("div");
+    hint.className = "hezl-sep-hint";
+    hint.textContent = `将勾选的 ${Object.keys(state.treeSelected).filter(k => state.treeSelected[k]).length} 个 txt 添加到：`;
+
+    const listEl = document.createElement("div");
+    listEl.className = "hezl-popover-list";
+    const lastGi = (state.lastAddGroup >= 0 && state.lastAddGroup < state.groups.length) ? state.lastAddGroup : 0;
+    state.groups.forEach((g, gi) => {
+        const item = document.createElement("div");
+        item.className = "hezl-modal-item" + (gi === lastGi ? " selected" : "");
+        item.textContent = `${g.name}（${g.items.length} 项）`;
+        item.title = `添加到「${g.name}」`;
+        item.addEventListener("click", () => {
+            state.lastAddGroup = gi;
+            closePopover();
+            doAddSelectedFiles(node, gi);
+        });
+        listEl.appendChild(item);
+    });
+
+    const newGroupBtn = document.createElement("button");
+    newGroupBtn.className = "hezl-rtxt-btn primary";
+    newGroupBtn.textContent = "➕ 新建分组并添加";
+    newGroupBtn.style.width = "100%";
+    newGroupBtn.style.marginTop = "6px";
+    newGroupBtn.addEventListener("click", () => {
+        const gi = state.groups.length;
+        state.groups.push(createGroup("分组 " + (state.groups.length + 1)));
+        state.lastAddGroup = gi;
+        closePopover();
+        renderGroups(node);
+        doAddSelectedFiles(node, gi);
+    });
+
+    popover.appendChild(header);
+    popover.appendChild(hint);
+    popover.appendChild(listEl);
+    popover.appendChild(newGroupBtn);
+    document.body.appendChild(popover);
+    currentPopover = popover;
+    makePopoverDraggable(popover, header);
+
+    closeBtn.addEventListener("click", closePopover);
+    bindPopoverClose(popover, btnEl);
+    positionPopover(popover, btnEl);
+}
+
+// 实际执行添加：把勾选的 txt 依次添加到指定分组
+async function doAddSelectedFiles(node, gi) {
+    const state = getState(node);
+    const selectedPaths = Object.keys(state.treeSelected).filter(k => state.treeSelected[k]);
+    if (selectedPaths.length === 0) return;
     // 从树中找到对应的文件节点
     const allFiles = [];
     if (state.tree) {
@@ -879,7 +1098,7 @@ async function addSelectedFiles(node) {
     }
     for (const fp of selectedPaths) {
         const fn = allFiles.find(f => f.path === fp);
-        if (fn) await addItem(node, fn);
+        if (fn) await addItem(node, fn, gi);
     }
     // 添加后清空选择
     state.treeSelected = {};
@@ -1179,16 +1398,17 @@ async function commitRename(node, treeNode, newName) {
         const newPath = data.new_path;
         const isFolder = treeNode.type === "folder";
         updateStatePathsAfterRename(state, oldPath, newPath, isFolder);
-        // 重新加载目录树并刷新右侧条目
+        // 重新加载目录树并刷新右侧分组（路径变更后需重新渲染所有分组）
         try { state.tree = await fetchTree(); } catch (e) { /* ignore */ }
         renderTree(node);
-        renderItems(node);
+        renderGroups(node);
     } catch (e) {
         alert("重命名失败: " + e.message);
     }
 }
 
 // 重命名后更新 state 中以路径为 key 的字段，保持选中/展开/已添加条目不丢失
+// 遍历所有分组的 items 更新路径（多分组结构）
 function updateStatePathsAfterRename(state, oldPath, newPath, isFolder) {
     state.treeShiftSelected = {};
     if (isFolder) {
@@ -1209,9 +1429,11 @@ function updateStatePathsAfterRename(state, oldPath, newPath, isFolder) {
         }
         state.treeExpanded = newExp;
 
-        for (const it of state.items) {
-            if (it.path === oldPath) it.path = newPath;
-            else if (it.path.startsWith(prefix)) it.path = newPath + "/" + it.path.slice(prefix.length);
+        for (const g of state.groups) {
+            for (const it of g.items) {
+                if (it.path === oldPath) it.path = newPath;
+                else if (it.path.startsWith(prefix)) it.path = newPath + "/" + it.path.slice(prefix.length);
+            }
         }
         if (state.lastSelectedPath && state.lastSelectedPath.startsWith(prefix)) {
             state.lastSelectedPath = newPath + "/" + state.lastSelectedPath.slice(prefix.length);
@@ -1221,10 +1443,12 @@ function updateStatePathsAfterRename(state, oldPath, newPath, isFolder) {
             state.treeSelected[newPath] = state.treeSelected[oldPath];
             delete state.treeSelected[oldPath];
         }
-        for (const it of state.items) {
-            if (it.path === oldPath) {
-                it.path = newPath;
-                it.name = newPath.split("/").pop();
+        for (const g of state.groups) {
+            for (const it of g.items) {
+                if (it.path === oldPath) {
+                    it.path = newPath;
+                    it.name = newPath.split("/").pop();
+                }
             }
         }
         if (state.lastSelectedPath === oldPath) state.lastSelectedPath = newPath;
@@ -1333,145 +1557,114 @@ function collapseAllFolders(node) {
     renderTree(node);
 }
 
-// ============ 移除全部右侧条目 ============
-function removeAllItems(node) {
+// ============ 分组内：全开启/全关闭 ============
+function toggleAllItemsInGroup(node, gi) {
     const state = getState(node);
-    if (state.items.length === 0) return;
-    if (!confirm(`确定要移除全部 ${state.items.length} 个 txt 文件吗？`)) return;
-    state.items = [];
-    renderItems(node);
-}
-
-// ============ 全开启/全关闭 ============
-function toggleAllItems(node, btn) {
-    const state = getState(node);
-    if (state.items.length === 0) return;
-    const allEnabled = state.items.every(it => it.enabled);
+    const group = state.groups[gi];
+    if (!group || group.items.length === 0) return;
+    const allEnabled = group.items.every(it => it.enabled);
     const target = !allEnabled;
-    for (const it of state.items) {
+    for (const it of group.items) {
         it.enabled = target;
     }
-    renderItems(node);
-    updateAllToggleBtn(node, btn);
+    renderGroupItems(node, gi);
 }
 
-function updateAllToggleBtn(node, btn) {
+function updateAllToggleBtnForGroup(node, gi) {
+    const group = getState(node).groups[gi];
+    if (!group) return;
+    const btn = group._toggleBtn;
     if (!btn) return;
-    const state = getState(node);
-    const allEnabled = state.items.length > 0 && state.items.every(it => it.enabled);
-    if (allEnabled) {
-        btn.textContent = "🔴";
-        btn.className = "hezl-rtxt-btn all-off";
-    } else {
-        btn.textContent = "🟢";
-        btn.className = "hezl-rtxt-btn all-on";
-    }
+    const allEnabled = group.items.length > 0 && group.items.every(it => it.enabled);
+    btn.textContent = allEnabled ? "🔴" : "🟢";
+    btn.className = "hezl-rtxt-btn " + (allEnabled ? "all-off" : "all-on");
+    btn.title = allEnabled ? "关闭本组全部输出" : "开启本组全部输出";
 }
 
-// ============ 全部随机/全部固定 ============
-function toggleAllRandom(node, btn) {
+// ============ 分组内：全部随机/全部固定 ============
+function toggleAllRandomInGroup(node, gi) {
     const state = getState(node);
-    if (state.items.length === 0) return;
-    const anyRandom = state.items.some(it => it.random);
+    const group = state.groups[gi];
+    if (!group || group.items.length === 0) return;
+    const anyRandom = group.items.some(it => it.random);
     const target = !anyRandom;
-    for (const it of state.items) {
+    for (const it of group.items) {
         it.random = target;
     }
-    renderItems(node);
+    renderGroupItems(node, gi);
 }
 
-function updateAllRandomBtn(node) {
-    const btn = node._hezl_all_random_btn;
+function updateAllRandomBtnForGroup(node, gi) {
+    const group = getState(node).groups[gi];
+    if (!group) return;
+    const btn = group._randomBtn;
     if (!btn) return;
-    const state = getState(node);
-    const anyRandom = state.items.some(it => it.random);
+    const anyRandom = group.items.some(it => it.random);
     if (anyRandom) {
         btn.textContent = "📌";
-        btn.title = "关闭全部随机";
+        btn.title = "关闭本组全部随机";
         btn.className = "hezl-rtxt-btn all-off";
     } else {
         btn.textContent = "🎲";
-        btn.title = "开启全部随机";
+        btn.title = "开启本组全部随机";
         btn.className = "hezl-rtxt-btn all-on";
     }
 }
 
-// ====== 合并随机输出按钮状态 ======
-function updateMergeBtn(node) {
-    const btn = node._hezl_merge_btn;
+// ====== 分组内：合并随机输出按钮状态 ======
+function updateMergeBtnForGroup(node, gi) {
+    const group = getState(node).groups[gi];
+    if (!group) return;
+    const btn = group._mergeBtn;
     if (!btn) return;
-    const state = getState(node);
-    if (state.merge_enabled) {
+    if (group.merge_enabled) {
         btn.textContent = "🗳️";
-        btn.title = "合并随机输出已开启（点击关闭）";
+        btn.title = "本组合并随机输出已开启（点击关闭）";
         btn.className = "hezl-rtxt-btn all-on";
     } else {
         btn.textContent = "🗳️";
-        btn.title = "合并随机输出已关闭（点击开启）";
+        btn.title = "本组合并随机输出已关闭（点击开启）";
         btn.className = "hezl-rtxt-btn";
     }
 }
 
-// ====== 种子按钮状态 ======
-function updateSeedBtn(node) {
-    const btn = node._hezl_seed_btn;
+// ====== 分组内：种子按钮状态 ======
+function updateSeedBtnForGroup(node, gi) {
+    const group = getState(node).groups[gi];
+    if (!group) return;
+    const btn = group._seedBtn;
     if (!btn) return;
-    const state = getState(node);
-    if (state.seed_mode === "fixed") {
+    if (group.seed_mode === "fixed") {
         btn.textContent = "⏸️";
-        btn.title = "固定种子（相同种子输出相同结果，点击切换为随机）";
+        btn.title = "本组固定种子（相同种子输出相同结果，点击切换为随机）";
         btn.className = "hezl-rtxt-btn all-off";
     } else {
         btn.textContent = "🔀";
-        btn.title = "随机种子（每次执行都不同，点击切换为固定）";
+        btn.title = "本组随机种子（每次执行都不同，点击切换为固定）";
         btn.className = "hezl-rtxt-btn all-on";
     }
 }
 
-// ============ 随机预计算 ============
-// 复刻后端 execute() 的随机逻辑，基于当前 seed 预计算每个 🎲 开启项将选中的行，
-// 使前端词组按钮显示与后端实际输出一致的结果。
-// 注意：必须与 nodes.py 的 execute() 严格保持一致——
-//   - 始终用 random.Random(seed)（后端已改为始终用 seed）
-//   - 跳过 enabled=false 的项（不消耗 RNG 状态）
-//   - random 项调用 rng.choice(lines)，非 random 项用 lines[selected_line]
-//   - 合并模式下按钮不显示预计算（输出是 merge sample，非逐项）
-// 返回：与 state.items 等长的数组，元素为 { line, lineIndex } 或 null（无法预计算）
-// 预计算 🎲 随机模式下每个项将输出的行（与后端 execute 一致）。
-// 注：当前 UI 在 🎲 随机模式下不显示预览（词组按钮留空），此函数暂未被 renderItems 调用。
-// 保留以备未来恢复预览功能，或供其他需要预计算的场景使用。
-function computePreviewLines(node) {
-    const state = getState(node);
-    const result = new Array(state.items.length).fill(null);
-
-    // 合并模式下逐项无独立输出，不预计算
-    if (state.merge_enabled) return result;
-
-    // 复刻 rng = random.Random(seed)
+// ============ 随机预计算（按组）============
+// 复刻后端 execute() 的组内随机逻辑，基于本组 seed 预计算每个 🎲 开启项将选中的行。
+// 必须与 nodes.py execute() 组内逻辑严格一致：跳过 enabled=false、random 用 rng.choice。
+// 返回：与 group.items 等长的数组，元素为 { line, lineIndex } 或 null。
+// 由 renderGroupItems 调用，让 🎲 随机模式的词组按钮显示"当前种子会选出的行"，
+// 与后端 execute() 输出一致；合并模式下返回全 null（合并模式不逐项输出）。
+function computePreviewLinesForGroup(node, gi) {
+    const group = getState(node).groups[gi];
+    const result = new Array((group?.items || []).length).fill(null);
+    if (!group || group.merge_enabled) return result;
     let rng;
-    try {
-        rng = new PyRandom(state.seed);
-    } catch (e) {
-        return result;
-    }
-
-    for (let i = 0; i < state.items.length; i++) {
-        const item = state.items[i];
-        // 跳过未启用项（与后端一致，不消耗 RNG）
+    try { rng = new PyRandom(group.seed); } catch (e) { return result; }
+    for (let i = 0; i < group.items.length; i++) {
+        const item = group.items[i];
         if (!item.enabled) continue;
         const lines = item.lines || [];
         if (lines.length === 0) continue;
-
         if (item.random) {
-            // 复刻 rng.choice(lines)
-            try {
-                const idx = rng._randbelow(lines.length);
-                result[i] = { line: lines[idx], lineIndex: idx };
-            } catch (e) {
-                // RNG 错误时跳过
-            }
+            try { const idx = rng._randbelow(lines.length); result[i] = { line: lines[idx], lineIndex: idx }; } catch (e) {}
         } else {
-            // 手动选择：不消耗 RNG
             let idx = item.selected_line || 0;
             if (idx < 0 || idx >= lines.length) idx = 0;
             result[i] = { line: lines[idx], lineIndex: idx };
@@ -1480,76 +1673,350 @@ function computePreviewLines(node) {
     return result;
 }
 
-// ============ 🛎️ 生成随机种子并应用到所有 item ============
-// 用 PyRandom(seed) 为每个启用的 item 预计算一个随机行索引（复刻 rng.choice），
-// 写入 item.selected_line，并将 item.random 设为 false（📌 固定模式）。
-// 这样：
-//   - 词组按钮显示随机选出的词组（📌 固定模式显示 selected_line）
-//   - 后端 execute() 因 random=false，输出 lines[selected_line]，与预览一致
-//   - 每次点击 🛎️ 生成新种子，selected_line 随之变化，词组按钮刷新
-// 合并模式下不逐项处理（输出是 merge sample，非逐项）。
-function applyRandomSeedToItems(node, seed) {
+// ============ 右侧分组区渲染 ============
+// 遍历 state.groups，每个分组渲染一个分组栏（header + 工具栏 + body）。
+// body 内的 items 列表由 renderGroupItems 单独渲染。
+function renderGroups(node) {
     const state = getState(node);
-    if (state.merge_enabled) return;
-
-    let rng;
-    try {
-        rng = new PyRandom(seed);
-    } catch (e) {
-        return;
+    const container = node._hezl_groups_el;
+    if (!container) return;
+    const savedScrollTop = container.scrollTop;
+    container.innerHTML = "";
+    if (state.groups.length === 0) {
+        state.groups.push(createGroup("默认分组"));
     }
-
-    for (let i = 0; i < state.items.length; i++) {
-        const item = state.items[i];
-        if (!item.enabled) {
-            // 未启用项仍设为固定模式，但不消耗 RNG
-            item.random = false;
-            continue;
-        }
-        const lines = item.lines || [];
-        if (lines.length === 0) {
-            item.random = false;
-            continue;
-        }
-        // 复刻 rng.choice(lines) = lines[_randbelow(len(lines))]
-        try {
-            const idx = rng._randbelow(lines.length);
-            item.selected_line = idx;
-        } catch (e) {
-            // RNG 错误时保持原 selected_line
-        }
-        item.random = false;
-    }
+    const frag = document.createDocumentFragment();
+    state.groups.forEach((group, gi) => {
+        frag.appendChild(buildGroupEl(node, gi));
+    });
+    // 末尾追加虚线"+分组"按钮（替代原顶部 ➕ 分组 按钮）
+    const addGroupBtn = document.createElement("button");
+    addGroupBtn.className = "hezl-add-group-btn";
+    addGroupBtn.textContent = "➕ 分组";
+    addGroupBtn.title = "在最后新增一个分组";
+    addGroupBtn.addEventListener("click", () => addGroup(node));
+    frag.appendChild(addGroupBtn);
+    container.appendChild(frag);
+    // DOM 插入后再渲染各组 items 列表与按钮状态
+    state.groups.forEach((group, gi) => {
+        renderGroupItems(node, gi);
+    });
+    container.scrollTop = savedScrollTop;
 }
 
-// ============ 右侧列表渲染 ============
-function renderItems(node) {
+// 构建单个分组栏（header + 工具栏 + body），按钮 DOM 引用挂在 group 对象上
+function buildGroupEl(node, gi) {
     const state = getState(node);
-    const container = node._hezl_items_el;
+    const group = state.groups[gi];
+    const groupEl = document.createElement("div");
+    groupEl.className = "hezl-group";
+    groupEl.dataset.gi = gi;
+
+    // ===== header（顶部按钮栏：拖拽手柄 | 分组名+✏️ | 工具栏）=====
+    const header = document.createElement("div");
+    header.className = "hezl-group-header";
+
+    // 拖拽手柄（拖动改变分组顺序）
+    const handle = document.createElement("span");
+    handle.className = "hezl-group-handle";
+    handle.textContent = "⋮⋮";
+    handle.title = "拖拽改变分组顺序";
+    handle.draggable = true;
+    handle.addEventListener("dragstart", (e) => {
+        groupEl.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", JSON.stringify({ type: "group", gi }));
+    });
+    handle.addEventListener("dragend", () => {
+        groupEl.classList.remove("dragging");
+        const container = node._hezl_groups_el;
+        if (container) container.querySelectorAll(".group-drag-over").forEach(el => el.classList.remove("group-drag-over"));
+    });
+
+    // 分组名 + ✏️ 重命名按钮（左侧一组，与其他按钮隔开）
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "hezl-group-name-wrap";
+    const nameEl = document.createElement("span");
+    nameEl.className = "hezl-group-name";
+    nameEl.textContent = group.name;
+    nameEl.title = "双击重命名分组";
+    nameEl.addEventListener("dblclick", () => renameGroup(node, gi));
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "hezl-group-rename-btn";
+    renameBtn.textContent = "✏️";
+    renameBtn.title = "重命名分组";
+    renameBtn.addEventListener("click", () => renameGroup(node, gi));
+    nameWrap.appendChild(nameEl);
+    nameWrap.appendChild(renameBtn);
+
+    // 工具栏（右侧按钮组）
+    const toolbar = document.createElement("div");
+    toolbar.className = "hezl-group-toolbar";
+
+    // 批量操作组：全开关 / 全随机（原 👈️📄 移除全部按钮已移除，逐个 × 删除即可）
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "hezl-rtxt-btn all-on";
+    toggleBtn.textContent = "🟢";
+    toggleBtn.addEventListener("click", () => toggleAllItemsInGroup(node, gi));
+    group._toggleBtn = toggleBtn;
+
+    const randomBtn = document.createElement("button");
+    randomBtn.className = "hezl-rtxt-btn all-on";
+    randomBtn.textContent = "🎲";
+    randomBtn.addEventListener("click", () => toggleAllRandomInGroup(node, gi));
+    group._randomBtn = randomBtn;
+
+    const batchGroup = document.createElement("div");
+    batchGroup.className = "hezl-rtxt-toolbar-group";
+    batchGroup.appendChild(toggleBtn);
+    batchGroup.appendChild(randomBtn);
+
+    // 合并输出组：🗳️ + 数量 + ▲▼
+    const mergeBtn = document.createElement("button");
+    mergeBtn.className = "hezl-rtxt-btn";
+    mergeBtn.textContent = "🗳️";
+    mergeBtn.addEventListener("click", () => {
+        group.merge_enabled = !group.merge_enabled;
+        renderGroupItems(node, gi);
+    });
+    group._mergeBtn = mergeBtn;
+
+    const mergeCountInput = document.createElement("input");
+    mergeCountInput.type = "number";
+    mergeCountInput.className = "hezl-rtxt-num-input";
+    mergeCountInput.min = "1";
+    mergeCountInput.value = group.merge_count;
+    mergeCountInput.title = "本组合并随机输出数量";
+    mergeCountInput.addEventListener("input", () => {
+        group.merge_count = Math.max(1, parseInt(mergeCountInput.value) || 1);
+    });
+    group._mergeCountInput = mergeCountInput;
+
+    const spinUp = document.createElement("button");
+    spinUp.className = "hezl-spinner-btn up";
+    spinUp.textContent = "▲";
+    spinUp.title = "增加数量";
+    spinUp.addEventListener("click", () => {
+        group.merge_count = Math.max(1, group.merge_count + 1);
+        mergeCountInput.value = group.merge_count;
+    });
+    const spinDown = document.createElement("button");
+    spinDown.className = "hezl-spinner-btn down";
+    spinDown.textContent = "▼";
+    spinDown.title = "减少数量";
+    spinDown.addEventListener("click", () => {
+        group.merge_count = Math.max(1, group.merge_count - 1);
+        mergeCountInput.value = group.merge_count;
+    });
+    const spinnerBtns = document.createElement("div");
+    spinnerBtns.className = "hezl-spinner-btns";
+    spinnerBtns.appendChild(spinUp);
+    spinnerBtns.appendChild(spinDown);
+
+    const mergeGroup = document.createElement("div");
+    mergeGroup.className = "hezl-merge-group";
+    mergeGroup.appendChild(mergeBtn);
+    mergeGroup.appendChild(mergeCountInput);
+    mergeGroup.appendChild(spinnerBtns);
+
+    // 种子控制组：🛎️ + 🔀/⏸️ + 种子输入框
+    const genSeedBtn = document.createElement("button");
+    genSeedBtn.className = "hezl-rtxt-btn";
+    genSeedBtn.textContent = "🛎️";
+    genSeedBtn.title = "生成本组随机种子：填入新种子、切到固定模式，用种子计算随机行并固定为已选词组，本组所有 txt 变为 📌 固定模式（词组随种子变化）";
+    genSeedBtn.addEventListener("click", () => {
+        group.seed = Math.floor(Math.random() * 1000000000);
+        group.seed_mode = "fixed";
+        // 用新种子计算随机行，固定为 selected_line，再切 📌 固定模式。
+        // 临时把所有 item 设为 🎲 模式，让 computePreviewLinesForGroup 用 rng 计算随机行
+        // （复刻后端 rng.choice 顺序，保证 📌 词组随种子变化且与后端随机结果一致）。
+        for (const it of group.items) it.random = true;
+        const previews = computePreviewLinesForGroup(node, gi);
+        for (let i = 0; i < group.items.length; i++) {
+            const it = group.items[i];
+            const prev = previews[i];
+            if (prev) it.selected_line = prev.lineIndex;
+            it.random = false; // 切 📌 固定模式
+        }
+        if (group._seedInput) group._seedInput.value = group.seed;
+        renderGroupItems(node, gi);
+    });
+
+    const seedBtn = document.createElement("button");
+    seedBtn.className = "hezl-rtxt-btn";
+    seedBtn.textContent = "🔀";
+    seedBtn.addEventListener("click", () => {
+        group.seed_mode = group.seed_mode === "fixed" ? "random" : "fixed";
+        renderGroupItems(node, gi);
+    });
+    group._seedBtn = seedBtn;
+
+    const seedInput = document.createElement("input");
+    seedInput.type = "text";
+    seedInput.className = "hezl-rtxt-num-input hezl-rtxt-seed-input";
+    seedInput.value = group.seed;
+    seedInput.title = "本组种子值（固定模式时相同种子输出相同结果）";
+    seedInput.addEventListener("input", () => {
+        group.seed = Math.max(0, parseInt(seedInput.value) || 0);
+        renderGroupItems(node, gi);
+    });
+    group._seedInput = seedInput;
+
+    const seedGroup = document.createElement("div");
+    seedGroup.className = "hezl-rtxt-toolbar-group";
+    seedGroup.appendChild(genSeedBtn);
+    seedGroup.appendChild(seedBtn);
+    seedGroup.appendChild(seedInput);
+
+    // 组间分隔符按钮
+    const groupSepBtn = document.createElement("button");
+    groupSepBtn.className = "hezl-item-sep-btn";
+    groupSepBtn.textContent = "⁉️";
+    groupSepBtn.title = "本组输出与下一组输出之间的分隔符\n当前: " + sepToDisplay(group.separator ?? ", ");
+    groupSepBtn.addEventListener("click", (e) => openGroupSeparatorPopover(node, gi, e.currentTarget));
+
+    // 删除分组
+    const deleteGroupBtn = document.createElement("button");
+    deleteGroupBtn.className = "hezl-rtxt-btn all-off";
+    deleteGroupBtn.textContent = "❌";
+    deleteGroupBtn.title = "删除此分组";
+    deleteGroupBtn.addEventListener("click", () => deleteGroup(node, gi));
+
+    toolbar.appendChild(batchGroup);
+    toolbar.appendChild(mergeGroup);
+    toolbar.appendChild(seedGroup);
+    toolbar.appendChild(groupSepBtn);
+    toolbar.appendChild(deleteGroupBtn);
+
+    header.appendChild(handle);
+    header.appendChild(nameWrap);
+    header.appendChild(toolbar);
+
+    // ===== body（显示区域）=====
+    const body = document.createElement("div");
+    body.className = "hezl-group-body";
+    group._bodyEl = body;
+    group._groupEl = groupEl;
+
+    // ===== body 作为 item 拖拽的 drop 目标（拖到空白区域追加到本组末尾）=====
+    // item row 的 drop 优先（row 是更具体的 target 且 stopPropagation）；
+    // 当目标组为空或鼠标落在 row 之外的空白区域时，body 的 drop 触发，追加到末尾
+    body.addEventListener("dragover", (e) => {
+        const dragging = (node._hezl_groups_el || document).querySelector(".hezl-rtxt-item.dragging");
+        if (!dragging) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        // 鼠标不在任何 item row 上时，高亮 body 表示可追加到末尾
+        if (!e.target.closest(".hezl-rtxt-item")) {
+            body.classList.add("body-drag-over");
+        } else {
+            body.classList.remove("body-drag-over");
+        }
+    });
+    body.addEventListener("dragleave", (e) => {
+        if (!body.contains(e.relatedTarget)) {
+            body.classList.remove("body-drag-over");
+        }
+    });
+    body.addEventListener("drop", (e) => {
+        body.classList.remove("body-drag-over");
+        let payload;
+        try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch (_) { return; }
+        if (!payload || payload.type !== "item") return;
+        e.preventDefault();
+        e.stopPropagation();
+        const fromGi = payload.gi;
+        const fromIdx = payload.idx;
+        const toGi = gi;
+        const state = getState(node);
+        const fromGroup = state.groups[fromGi];
+        const toGroup = state.groups[toGi];
+        if (!fromGroup || !toGroup) return;
+        // 追加到目标组末尾
+        const toIdx = toGroup.items.length;
+        if (fromGi === toGi && fromIdx === toIdx - 1) return; // 已是最后一项，无需移动
+        const [moved] = fromGroup.items.splice(fromIdx, 1);
+        const insertIdx = (fromGi === toGi && fromIdx < toIdx) ? toIdx - 1 : toIdx;
+        toGroup.items.splice(insertIdx, 0, moved);
+        renderGroupItems(node, fromGi);
+        if (toGi !== fromGi) renderGroupItems(node, toGi);
+    });
+
+    // ===== 分组拖拽：在 groupEl 上接收 drop 改变分组顺序 =====
+    // 仅响应 type==="group" 的拖拽（item 拖拽有自己的 drop 处理，冒泡到此会被 type 检查过滤）
+    groupEl.addEventListener("dragover", (e) => {
+        const container = node._hezl_groups_el;
+        if (!container) return;
+        const dragging = container.querySelector(".hezl-group.dragging");
+        if (!dragging || dragging === groupEl) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        groupEl.classList.add("group-drag-over");
+    });
+    groupEl.addEventListener("dragleave", (e) => {
+        // 仅当离开 groupEl 本身（而非进入子元素）时移除高亮
+        if (!groupEl.contains(e.relatedTarget)) {
+            groupEl.classList.remove("group-drag-over");
+        }
+    });
+    groupEl.addEventListener("drop", (e) => {
+        groupEl.classList.remove("group-drag-over");
+        let payload;
+        try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch (_) { return; }
+        if (!payload || payload.type !== "group") return; // 非分组拖拽不处理
+        e.preventDefault();
+        e.stopPropagation();
+        const fromGi = payload.gi;
+        const toGi = gi;
+        if (fromGi === toGi) return;
+        const st = getState(node);
+        const [moved] = st.groups.splice(fromGi, 1);
+        const insertIdx = (fromGi < toGi) ? toGi - 1 : toGi;
+        st.groups.splice(insertIdx, 0, moved);
+        // 修正 lastAddGroup 索引（受数组重排影响）
+        if (st.lastAddGroup === fromGi) st.lastAddGroup = toGi;
+        else if (fromGi < st.lastAddGroup && toGi >= st.lastAddGroup) st.lastAddGroup -= 1;
+        else if (fromGi > st.lastAddGroup && toGi <= st.lastAddGroup) st.lastAddGroup += 1;
+        renderGroups(node);
+    });
+
+    groupEl.appendChild(header);
+    groupEl.appendChild(body);
+    return groupEl;
+}
+
+// 渲染单个分组的 items 列表，并更新该组工具栏按钮状态
+function renderGroupItems(node, gi) {
+    const state = getState(node);
+    const group = state.groups[gi];
+    if (!group) return;
+    const container = group._bodyEl;
     if (!container) return;
-    // 保存滚动位置：container.innerHTML="" 会把 scrollTop/scrollLeft 重置为 0，
-    // 导致点击 🎲/📌、开关、删除等触发重渲染时，视口跳回首端（窄面板下尤其明显，
-    // 表现为"按钮跑到最左侧"）。重渲染后恢复原滚动位置即可消除该跳动。
+    // 保存滚动位置：innerHTML="" 会重置 scrollTop/scrollLeft
     const savedScrollTop = container.scrollTop;
     const savedScrollLeft = container.scrollLeft;
     container.innerHTML = "";
 
-    // 更新顶部按钮状态
-    updateAllToggleBtn(node, node._hezl_all_toggle_btn);
-    updateAllRandomBtn(node);
+    // 更新本组工具栏按钮状态
+    updateAllToggleBtnForGroup(node, gi);
+    updateAllRandomBtnForGroup(node, gi);
+    updateMergeBtnForGroup(node, gi);
+    updateSeedBtnForGroup(node, gi);
+    if (group._seedInput) group._seedInput.value = group.seed;
+    if (group._mergeCountInput) group._mergeCountInput.value = group.merge_count;
 
-    if (state.items.length === 0) {
-        container.innerHTML = '<div class="hezl-items-empty">在左侧勾选 txt 文件后点击"添加"</div>';
+    if (group.items.length === 0) {
+        container.innerHTML = '<div class="hezl-items-empty">在左侧勾选 txt 后点击"添加"到此分组</div>';
         return;
     }
 
+    // 注：🎲 随机模式词组按钮显示为空（不显示预览），previews 仅由 🛎️ 按钮单独调用计算用于固定 selected_line。
+
     const frag = document.createDocumentFragment();
-    state.items.forEach((item, index) => {
-        // 外层包裹：序号在边框外
+    group.items.forEach((item, index) => {
         const itemWrap = document.createElement("div");
         itemWrap.className = "hezl-rtxt-item-wrap";
 
-        // 序号（在边框外，左侧）
         const indexEl = document.createElement("span");
         indexEl.className = "hezl-rtxt-item-index";
         indexEl.textContent = String(index + 1);
@@ -1557,31 +2024,25 @@ function renderItems(node) {
 
         const row = document.createElement("div");
         let rowClass = "hezl-rtxt-item" + (item.enabled ? "" : " disabled");
-        if (state.merge_enabled) rowClass += " merge-active";
+        if (group.merge_enabled) rowClass += " merge-active";
         row.className = rowClass;
         row.draggable = true;
-        row.dataset.index = index;
+        row.dataset.gi = gi;
+        row.dataset.idx = index;
 
-        // 拖拽手柄
         const handle = document.createElement("span");
         handle.className = "hezl-drag-handle";
         handle.textContent = "⋮⋮";
 
-        // 开启/关闭按钮
         const toggleBtn = document.createElement("button");
         toggleBtn.className = "hezl-item-toggle" + (item.enabled ? " on" : "");
         toggleBtn.textContent = item.enabled ? "🟢" : "🔴";
         toggleBtn.title = "启用/禁用此词条输出";
         toggleBtn.addEventListener("click", () => {
             item.enabled = !item.enabled;
-            toggleBtn.classList.toggle("on", item.enabled);
-            toggleBtn.textContent = item.enabled ? "🟢" : "🔴";
-            row.classList.toggle("disabled", !item.enabled);
-            // 切换启用状态会改变 RNG 消耗顺序（禁用项不消耗 RNG），需重新预计算
-            renderItems(node);
+            renderGroupItems(node, gi);
         });
 
-        // 文件名
         const nameSpan = document.createElement("span");
         nameSpan.className = "hezl-item-name";
         nameSpan.textContent = item.name;
@@ -1591,25 +2052,19 @@ function renderItems(node) {
         sep1.className = "hezl-sep";
         sep1.textContent = "|";
 
-        // 🎲/📌 随机模式按钮（🎲绿色底=随机开启，📌红色底=固定模式）
+        // 🎲/📌 随机模式按钮（类名用命名空间化的 dice-active/dice-fixed，避免与全局 .fixed 冲突）
         const diceBtn = document.createElement("button");
-        // 注意：类名不能用裸 "fixed"/"active"，会与 ComfyUI 全局 .fixed{position:fixed} 冲突，
-        // 导致固定模式下按钮被移出 flex 流跳到行首并重叠开关。改用命名空间化的 dice-active/dice-fixed。
         diceBtn.className = "hezl-dice" + (item.random ? " dice-active" : " dice-fixed");
         diceBtn.textContent = item.random ? "🎲" : "📌";
         diceBtn.title = item.random ? "随机模式已开启（点击固定当前选择）" : "随机模式已关闭（点击开启随机选取一行）";
 
-        // 词组选择按钮（点击弹窗）- 有译文时显示译文，悬停显示原文
-        // 🎲 随机模式：按钮为空（执行时由后端随机选取一行），点击仍可弹窗选择（不影响随机输出）
-        // 📌 固定模式：显示手动选择的行
         const lineBtn = document.createElement("button");
         lineBtn.className = "hezl-item-line-btn";
         if (item.random) {
-            // 🎲 随机模式：不显示具体词组，提示执行时随机输出
+            // 🎲 随机模式：词组按钮显示为空（执行时随机选一行，不显示预览）
             lineBtn.textContent = "";
-            lineBtn.title = "随机模式（执行时输出随机一行）- 点击可选择词组";
+            lineBtn.title = "🎲 随机模式（执行时输出随机一行）- 点击可选择词组";
         } else {
-            // 📌 固定模式：显示已选词组
             const selIdx = item.selected_line || 0;
             const hasEn = item.lines.length > 0 && selIdx < item.lines.length;
             const enLine = hasEn ? item.lines[selIdx] : "";
@@ -1619,43 +2074,35 @@ function renderItems(node) {
             const displayLine = trLine || enLine || "(空)";
             const displayText = displayLine.length > 35 ? displayLine.substring(0, 32) + "..." : displayLine;
             lineBtn.textContent = displayText;
-            // 悬停显示完整内容：有译文时同时显示译文与原文，便于核对将输出的原文
             lineBtn.title = !hasEn ? "(空) - 点击选择词组"
                 : (trLine ? `${trLine}\n${enLine}` : enLine);
         }
-        lineBtn.addEventListener("click", (e) => openLinePopover(node, index, e.currentTarget));
+        lineBtn.addEventListener("click", (e) => openLinePopover(node, gi, index, e.currentTarget));
 
-        // 随机按钮点击：切换 🎲/📌 并重新渲染
         diceBtn.addEventListener("click", () => {
             item.random = !item.random;
-            diceBtn.classList.toggle("dice-active", item.random);
-            diceBtn.classList.toggle("dice-fixed", !item.random);
-            diceBtn.textContent = item.random ? "🎲" : "📌";
-            diceBtn.title = item.random ? "随机模式已开启（点击固定当前选择）" : "随机模式已关闭（点击开启随机选取一行）";
-            renderItems(node);
+            renderGroupItems(node, gi);
         });
 
         const sep2 = document.createElement("span");
         sep2.className = "hezl-sep";
         sep2.textContent = "|";
 
-        // 自定义间隔符按钮（此 txt 输出与下一个 txt 输出之间的分隔符）
         const sepBtn = document.createElement("button");
         sepBtn.className = "hezl-item-sep-btn";
         sepBtn.textContent = "⁉️";
         const curSep = item.separator ?? ",";
         sepBtn.title = "自定义与下个txt之间的间隔符号\n当前: " + sepToDisplay(curSep)
-            + (index === state.items.length - 1 ? "\n（这是最后一项，间隔符不会生效）" : "");
-        sepBtn.addEventListener("click", (e) => openSeparatorPopover(node, index, e.currentTarget));
+            + (index === group.items.length - 1 ? "\n（这是本组最后一项，间隔符不会生效）" : "");
+        sepBtn.addEventListener("click", (e) => openSeparatorPopover(node, gi, index, e.currentTarget));
 
-        // 删除按钮
         const removeBtn = document.createElement("button");
         removeBtn.className = "hezl-item-remove";
         removeBtn.textContent = "×";
         removeBtn.title = "移除";
         removeBtn.addEventListener("click", () => {
-            state.items.splice(index, 1);
-            renderItems(node);
+            group.items.splice(index, 1);
+            renderGroupItems(node, gi);
         });
 
         row.appendChild(handle);
@@ -1668,10 +2115,8 @@ function renderItems(node) {
         row.appendChild(lineBtn);
         row.appendChild(nameSpan);
 
-        // 拖拽排序
-        setupItemDrag(row, node);
+        setupItemDrag(row, node, gi);
 
-        // 右键菜单：定位文件
         row.addEventListener("contextmenu", (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1683,9 +2128,42 @@ function renderItems(node) {
         frag.appendChild(itemWrap);
     });
     container.appendChild(frag);
-    // 恢复重渲染前的滚动位置，避免视口跳动
     container.scrollTop = savedScrollTop;
     container.scrollLeft = savedScrollLeft;
+}
+
+// ============ 分组管理 ============
+function addGroup(node) {
+    const state = getState(node);
+    state.groups.push(createGroup("分组 " + (state.groups.length + 1)));
+    renderGroups(node);
+}
+
+function renameGroup(node, gi) {
+    const group = getState(node).groups[gi];
+    if (!group) return;
+    const name = prompt("分组名称：", group.name);
+    if (name && name.trim()) {
+        group.name = name.trim();
+        renderGroups(node);
+    }
+}
+
+function deleteGroup(node, gi) {
+    const state = getState(node);
+    const group = state.groups[gi];
+    if (!group) return;
+    if (state.groups.length <= 1) {
+        alert("至少保留一个分组");
+        return;
+    }
+    const msg = group.items.length > 0
+        ? `确定删除分组「${group.name}」及其中的 ${group.items.length} 个 txt 吗？`
+        : `确定删除空分组「${group.name}」吗？`;
+    if (!confirm(msg)) return;
+    state.groups.splice(gi, 1);
+    if (state.lastAddGroup >= state.groups.length) state.lastAddGroup = state.groups.length - 1;
+    renderGroups(node);
 }
 
 // ============ 右侧txt文件框右键菜单 ============
@@ -1765,26 +2243,29 @@ function locateFileInTree(node, filePath) {
     });
 }
 
-// ============ 拖拽排序 ============
-function setupItemDrag(row, node) {
+// ============ 拖拽排序（支持跨分组移动）============
+function setupItemDrag(row, node, gi) {
     row.addEventListener("dragstart", (e) => {
         row.classList.add("dragging");
         e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", row.dataset.index);
+        // 用 JSON 传递源分组索引与项索引，drop 时据此跨组移动；type:"item" 与分组拖拽区分
+        e.dataTransfer.setData("text/plain", JSON.stringify({ type: "item", gi, idx: parseInt(row.dataset.idx) }));
     });
     row.addEventListener("dragend", () => {
         row.classList.remove("dragging");
-        // 清理所有 drag-over
-        const container = node._hezl_items_el;
+        // 清理所有分组内的 drag-over
+        const container = node._hezl_groups_el;
         if (container) {
             container.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over"));
         }
     });
     row.addEventListener("dragover", (e) => {
+        // 仅响应 item 拖拽（分组拖拽用 .hezl-group.dragging，不在此处理）
+        const dragging = (node._hezl_groups_el || document).querySelector(".hezl-rtxt-item.dragging");
+        if (!dragging) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
-        const dragging = node._hezl_items_el.querySelector(".dragging");
-        if (dragging && dragging !== row) {
+        if (dragging !== row) {
             row.classList.add("drag-over");
         }
     });
@@ -1792,15 +2273,28 @@ function setupItemDrag(row, node) {
         row.classList.remove("drag-over");
     });
     row.addEventListener("drop", (e) => {
+        let payload;
+        try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch (_) { return; }
+        if (!payload || payload.type !== "item" || isNaN(payload.gi) || isNaN(payload.idx)) return;
         e.preventDefault();
+        e.stopPropagation();
         row.classList.remove("drag-over");
-        const fromIndex = parseInt(e.dataTransfer.getData("text/plain"));
-        const toIndex = parseInt(row.dataset.index);
-        if (isNaN(fromIndex) || isNaN(toIndex) || fromIndex === toIndex) return;
+        const fromGi = payload.gi;
+        const fromIdx = payload.idx;
+        const toGi = gi;
+        const toIdx = parseInt(row.dataset.idx);
         const state = getState(node);
-        const [moved] = state.items.splice(fromIndex, 1);
-        state.items.splice(toIndex, 0, moved);
-        renderItems(node);
+        const fromGroup = state.groups[fromGi];
+        const toGroup = state.groups[toGi];
+        if (!fromGroup || !toGroup) return;
+        // 同组同位置无操作
+        if (fromGi === toGi && fromIdx === toIdx) return;
+        const [moved] = fromGroup.items.splice(fromIdx, 1);
+        // 同组内：源在目标之前时，移除后目标索引需 -1
+        const insertIdx = (fromGi === toGi && fromIdx < toIdx) ? toIdx - 1 : toIdx;
+        toGroup.items.splice(insertIdx, 0, moved);
+        renderGroupItems(node, fromGi);
+        if (toGi !== fromGi) renderGroupItems(node, toGi);
     });
 }
 
@@ -1929,10 +2423,12 @@ function makePopoverDraggable(popover, header) {
 }
 
 // ============ 词组选择下拉弹窗 ============
-function openLinePopover(node, itemIndex, btnEl) {
+function openLinePopover(node, gi, itemIndex, btnEl) {
     closePopover();
     const state = getState(node);
-    const item = state.items[itemIndex];
+    const group = state.groups[gi];
+    if (!group) return;
+    const item = group.items[itemIndex];
     if (!item) return;
 
     const popover = document.createElement("div");
@@ -2021,8 +2517,9 @@ function openLinePopover(node, itemIndex, btnEl) {
             const idx = i;
             itemEl.addEventListener("click", () => {
                 item.selected_line = idx;
+                item.random = false; // 选词组后切 📌 固定模式，显示选中的词组（🎲 模式显示空）
                 closePopover();
-                renderItems(node);
+                renderGroupItems(node, gi);
             });
             frag.appendChild(itemEl);
             count++;
@@ -2085,10 +2582,12 @@ function displayToSep(text) {
     return out;
 }
 
-function openSeparatorPopover(node, itemIndex, btnEl) {
+function openSeparatorPopover(node, gi, itemIndex, btnEl) {
     closePopover();
     const state = getState(node);
-    const item = state.items[itemIndex];
+    const group = state.groups[gi];
+    if (!group) return;
+    const item = group.items[itemIndex];
     if (!item) return;
 
     const popover = document.createElement("div");
@@ -2170,7 +2669,7 @@ function openSeparatorPopover(node, itemIndex, btnEl) {
     function commit() {
         item.separator = displayToSep(input.value);
         closePopover();
-        renderItems(node);
+        renderGroupItems(node, gi);
     }
     okBtn.addEventListener("click", commit);
     cancelBtn.addEventListener("click", closePopover);
@@ -2182,6 +2681,107 @@ function openSeparatorPopover(node, itemIndex, btnEl) {
     bindPopoverClose(popover, btnEl);
 
     // 定位（基于真实高度）
+    positionPopover(popover, btnEl);
+    input.focus();
+    input.select();
+}
+
+// 组间分隔符弹窗：设置本组输出与下一组输出之间的分隔符（操作 group.separator）
+function openGroupSeparatorPopover(node, gi, btnEl) {
+    closePopover();
+    const state = getState(node);
+    const group = state.groups[gi];
+    if (!group) return;
+
+    const popover = document.createElement("div");
+    popover.className = "hezl-popover";
+
+    const header = document.createElement("div");
+    header.className = "hezl-popover-header";
+    const title = document.createElement("span");
+    title.style.flex = "1";
+    title.textContent = `组间分隔符 - ${group.name}`;
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "hezl-popover-close";
+    closeBtn.textContent = "×";
+    closeBtn.title = "关闭";
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const isLast = (gi === state.groups.length - 1);
+    const hint = document.createElement("div");
+    hint.className = "hezl-sep-hint";
+    hint.textContent = isLast
+        ? "这是最后一个分组，组间分隔符不会生效（仅在该组后新增分组时才生效）。"
+        : "本组输出与下一组输出之间的分隔符。可用 \\n 表示换行，\\t 表示制表符。";
+
+    const inputWrap = document.createElement("div");
+    inputWrap.className = "hezl-sep-input-wrap";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "hezl-sep-input";
+    input.value = sepToDisplay(group.separator ?? ", ");
+    input.placeholder = "如: , 或 ,  或 、 或 \\n";
+    inputWrap.appendChild(input);
+
+    const quick = document.createElement("div");
+    quick.className = "hezl-sep-quick";
+    const quickOptions = [
+        { label: ",（逗号）", value: "," },
+        { label: ", （逗号空格）", value: ", " },
+        { label: "、（顿号）", value: "、" },
+        { label: " （空格）", value: " " },
+        { label: "\\n（换行）", value: "\n" },
+        { label: " | ", value: " | " },
+        { label: "清空（无间隔）", value: "" },
+    ];
+    for (const opt of quickOptions) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "hezl-rtxt-btn hezl-sep-quick-btn";
+        b.textContent = opt.label;
+        b.addEventListener("click", () => {
+            input.value = sepToDisplay(opt.value);
+            input.focus();
+        });
+        quick.appendChild(b);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "hezl-popover-actions";
+    const okBtn = document.createElement("button");
+    okBtn.type = "button";
+    okBtn.className = "hezl-rtxt-btn primary";
+    okBtn.textContent = "确定";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "hezl-rtxt-btn";
+    cancelBtn.textContent = "取消";
+    actions.appendChild(okBtn);
+    actions.appendChild(cancelBtn);
+
+    popover.appendChild(header);
+    popover.appendChild(hint);
+    popover.appendChild(inputWrap);
+    popover.appendChild(quick);
+    popover.appendChild(actions);
+    document.body.appendChild(popover);
+    currentPopover = popover;
+    makePopoverDraggable(popover, header);
+
+    function commit() {
+        group.separator = displayToSep(input.value);
+        closePopover();
+        renderGroupItems(node, gi);
+    }
+    okBtn.addEventListener("click", commit);
+    cancelBtn.addEventListener("click", closePopover);
+    closeBtn.addEventListener("click", closePopover);
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        else if (e.key === "Escape") { e.preventDefault(); closePopover(); }
+    });
+    bindPopoverClose(popover, btnEl);
     positionPopover(popover, btnEl);
     input.focus();
     input.select();
@@ -2362,7 +2962,7 @@ function buildUI(node) {
     addBtn.className = "hezl-rtxt-btn primary";
     addBtn.textContent = "📄👉️";
     addBtn.title = "将勾选的txt文件添加到右侧";
-    addBtn.addEventListener("click", () => addSelectedFiles(node));
+    addBtn.addEventListener("click", () => addSelectedFiles(node, addBtn));
 
     btnRow.appendChild(refreshBtn);
     btnRow.appendChild(expandBtn);
@@ -2415,128 +3015,7 @@ function buildUI(node) {
     deleteBtn.title = "删除预设";
     deleteBtn.addEventListener("click", () => onDeletePreset(node));
 
-    const allToggleBtn = document.createElement("button");
-    allToggleBtn.className = "hezl-rtxt-btn all-off";
-    allToggleBtn.textContent = "🟢";
-    allToggleBtn.title = "开启/关闭所有txt文件输出";
-    allToggleBtn.addEventListener("click", () => toggleAllItems(node, allToggleBtn));
-    node._hezl_all_toggle_btn = allToggleBtn;
-
-    const allRandomBtn = document.createElement("button");
-    allRandomBtn.className = "hezl-rtxt-btn all-on";
-    allRandomBtn.textContent = "🎲";
-    allRandomBtn.title = "开启全部随机";
-    allRandomBtn.addEventListener("click", () => toggleAllRandom(node, allRandomBtn));
-    node._hezl_all_random_btn = allRandomBtn;
-
-    const removeAllBtn = document.createElement("button");
-    removeAllBtn.className = "hezl-rtxt-btn all-off";
-    removeAllBtn.textContent = "👈️📄";
-    removeAllBtn.title = "移除右侧全部txt文件";
-    removeAllBtn.addEventListener("click", () => removeAllItems(node));
-
-    // ====== 合并随机输出控件 ======
-    const mergeBtn = document.createElement("button");
-    mergeBtn.className = "hezl-rtxt-btn";
-    mergeBtn.textContent = "🗳️";
-    mergeBtn.title = "开启/关闭 合并随机输出词组";
-    mergeBtn.addEventListener("click", () => {
-        state.merge_enabled = !state.merge_enabled;
-        updateMergeBtn(node);
-        renderItems(node);
-    });
-    node._hezl_merge_btn = mergeBtn;
-
-    const mergeCountInput = document.createElement("input");
-    mergeCountInput.type = "number";
-    mergeCountInput.className = "hezl-rtxt-num-input";
-    mergeCountInput.min = "1";
-    mergeCountInput.value = state.merge_count;
-    mergeCountInput.title = "合并随机输出的词组数量";
-    mergeCountInput.addEventListener("input", () => {
-        const v = parseInt(mergeCountInput.value) || 1;
-        state.merge_count = Math.max(1, v);
-    });
-
-    // 数量输入框右侧的上下微调按钮
-    const spinUp = document.createElement("button");
-    spinUp.className = "hezl-spinner-btn up";
-    spinUp.textContent = "▲";
-    spinUp.title = "增加数量";
-    spinUp.addEventListener("click", () => {
-        const v = Math.max(1, (parseInt(mergeCountInput.value) || 1) + 1);
-        mergeCountInput.value = v;
-        state.merge_count = v;
-    });
-    const spinDown = document.createElement("button");
-    spinDown.className = "hezl-spinner-btn down";
-    spinDown.textContent = "▼";
-    spinDown.title = "减少数量";
-    spinDown.addEventListener("click", () => {
-        const v = Math.max(1, (parseInt(mergeCountInput.value) || 1) - 1);
-        mergeCountInput.value = v;
-        state.merge_count = v;
-    });
-    const spinnerBtns = document.createElement("div");
-    spinnerBtns.className = "hezl-spinner-btns";
-    spinnerBtns.appendChild(spinUp);
-    spinnerBtns.appendChild(spinDown);
-
-    // 将 🗳️ + 数量输入框 + 微调按钮 组合成一个整体（无内部间隙）
-    const mergeGroup = document.createElement("div");
-    mergeGroup.className = "hezl-merge-group";
-    mergeGroup.appendChild(mergeBtn);
-    mergeGroup.appendChild(mergeCountInput);
-    mergeGroup.appendChild(spinnerBtns);
-
-    // ====== 种子控件 ======
-    const seedBtn = document.createElement("button");
-    seedBtn.className = "hezl-rtxt-btn";
-    seedBtn.textContent = "🔀";
-    seedBtn.title = "随机种子（每次执行都不同）";
-    seedBtn.addEventListener("click", () => {
-        state.seed_mode = state.seed_mode === "fixed" ? "random" : "fixed";
-        updateSeedBtn(node);
-    });
-    node._hezl_seed_btn = seedBtn;
-
-    const seedInput = document.createElement("input");
-    seedInput.type = "text";
-    seedInput.className = "hezl-rtxt-num-input hezl-rtxt-seed-input";
-    seedInput.value = state.seed;
-    seedInput.title = "种子值（固定模式时相同种子输出相同结果）";
-    seedInput.addEventListener("input", () => {
-        const v = parseInt(seedInput.value) || 0;
-        state.seed = Math.max(0, v);
-        // 种子变化会改变 🎲 随机预览，需重新渲染词组按钮
-        renderItems(node);
-    });
-    node._hezl_seed_input = seedInput;
-
-    // ====== 🛎️ 生成随机种子按钮 ======
-    // 点击后：生成新随机种子填入种子输入框、切换为"⏸️ 固定模式"、刷新所有 🎲 预览。
-    // 这样种子值、按钮预览与后端 execute() 实际输出三者完全一致，便于复现。
-    const genSeedBtn = document.createElement("button");
-    genSeedBtn.className = "hezl-rtxt-btn";
-    genSeedBtn.textContent = "🛎️";
-    genSeedBtn.title = "生成随机种子：填入新种子、所有 txt 切换为 📌 固定模式、词组按钮显示随机选出的词组（每次点击词组随种子变化）";
-    genSeedBtn.addEventListener("click", () => {
-        state.seed = Math.floor(Math.random() * 1000000000);
-        state.seed_mode = "fixed";
-        if (node._hezl_seed_input) node._hezl_seed_input.value = state.seed;
-        updateSeedBtn(node);
-        // 用新种子为所有 item 预计算随机行索引写入 selected_line，并切换为 📌 固定模式
-        // 这样词组按钮显示随机选出的词组，后端 execute() 输出与预览一致
-        applyRandomSeedToItems(node, state.seed);
-        renderItems(node);
-    });
-    node._hezl_gen_seed_btn = genSeedBtn;
-
-    // 初始化按钮状态
-    updateMergeBtn(node);
-    updateSeedBtn(node);
-
-    // 顶部分两行：第一行=预设管理，第二行=批量操作+合并+种子
+    // 顶部单行：仅预设管理（新增分组按钮已移到分组列表底部的虚线按钮）
     const toolbarRow1 = document.createElement("div");
     toolbarRow1.className = "hezl-rtxt-toolbar-row";
     const presetGroup = document.createElement("div");
@@ -2546,34 +3025,14 @@ function buildUI(node) {
     presetGroup.appendChild(renameBtn);
     presetGroup.appendChild(deleteBtn);
     toolbarRow1.appendChild(presetGroup);
-
-    const toolbarRow2 = document.createElement("div");
-    toolbarRow2.className = "hezl-rtxt-toolbar-row";
-    // 第一组：批量操作按钮
-    const batchGroup = document.createElement("div");
-    batchGroup.className = "hezl-rtxt-toolbar-group";
-    batchGroup.appendChild(removeAllBtn);
-    batchGroup.appendChild(allToggleBtn);
-    batchGroup.appendChild(allRandomBtn);
-    toolbarRow2.appendChild(batchGroup);
-    // 第二组：🗳️ + 数量输入框 + 微调按钮
-    toolbarRow2.appendChild(mergeGroup);
-    // 第三组：种子控件
-    const seedGroup = document.createElement("div");
-    seedGroup.className = "hezl-rtxt-toolbar-group";
-    seedGroup.appendChild(genSeedBtn);
-    seedGroup.appendChild(seedBtn);
-    seedGroup.appendChild(seedInput);
-    toolbarRow2.appendChild(seedGroup);
-
     toolbar.appendChild(toolbarRow1);
-    toolbar.appendChild(toolbarRow2);
     rightPanel.appendChild(toolbar);
 
-    const itemsEl = document.createElement("div");
-    itemsEl.className = "hezl-rtxt-items";
-    rightPanel.appendChild(itemsEl);
-    node._hezl_items_el = itemsEl;
+    // 分组列表容器：所有分组栏在此滚动渲染（renderGroups 使用此容器）
+    const groupsEl = document.createElement("div");
+    groupsEl.className = "hezl-rtxt-items";
+    rightPanel.appendChild(groupsEl);
+    node._hezl_groups_el = groupsEl;
 
     container.appendChild(leftPanel);
     container.appendChild(resizer);
@@ -2614,7 +3073,7 @@ function buildUI(node) {
     (async () => {
         try { state.tree = await fetchTree(); } catch (e) { state.tree = []; console.error("加载目录树失败:", e); }
         renderTree(node);
-        renderItems(node);
+        renderGroups(node);
         await refreshPresets(node);
     })();
 
@@ -2626,9 +3085,10 @@ app.registerExtension({
     name: EXTENSION_NAME,
 
     async init() {
-        // 拦截 queuePrompt：在随机种子模式下，每次执行前生成新种子并显示在输入框
-        // 这样 PNG 元数据中保存的 config 会包含本次使用的种子，拖放图片复现时种子一致
-        // 同时刷新词组按钮预览，使预览与本次实际输出一致
+        // 拦截 queuePrompt：在每个分组的"随机种子模式"下，每次执行前为该组生成新种子并写入输入框
+        // 这样 PNG 元数据中保存的 config 会包含本次各组实际使用的种子，拖放图片复现时种子一致
+        // 预览由 renderGroups 内部用 computePreviewLinesForGroup 基于 group.seed 实时计算，
+        // 不修改 item.random / selected_line，保持用户手动固定选择不被覆盖，且 PNG 元数据 item.random 不变
         const origQueuePrompt = app.queuePrompt;
         app.queuePrompt = function (...args) {
             try {
@@ -2637,12 +3097,15 @@ app.registerExtension({
                     for (const n of graph._nodes) {
                         if (n.type === NODE_NAME) {
                             const st = getState(n);
-                            if (st.seed_mode === "random") {
-                                st.seed = Math.floor(Math.random() * 1000000000);
-                                if (n._hezl_seed_input) n._hezl_seed_input.value = st.seed;
-                                // 种子已更新，刷新 🎲 预览使其与本次执行输出一致
-                                renderItems(n);
-                            }
+                            let changed = false;
+                            st.groups.forEach((g, gi) => {
+                                if (g.seed_mode === "random") {
+                                    g.seed = Math.floor(Math.random() * 1000000000);
+                                    if (g._seedInput) g._seedInput.value = g.seed;
+                                    changed = true;
+                                }
+                            });
+                            if (changed) renderGroups(n);
                         }
                     }
                 }
