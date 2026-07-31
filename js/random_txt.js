@@ -168,7 +168,7 @@ function injectCSS() {
     gap: 2px;
     padding: 1px 2px;
     white-space: nowrap;
-    cursor: default;
+    cursor: pointer;
 }
 .hezl-tree-row:hover { background: rgba(255,255,255,0.05); }
 .hezl-tree-row.shift-selected { background: rgba(106,204,153,0.25); }
@@ -358,6 +358,7 @@ function injectCSS() {
     min-height: 30px;
     max-height: 50vh;
     overflow: auto;
+    position: relative;  /* 让子元素 offsetTop 相对于此容器，用于计算 10 项可见高度 */
 }
 /* item 拖拽时 body 可放置高亮（拖到空白区域追加到末尾）*/
 .hezl-group-body.body-drag-over {
@@ -381,6 +382,87 @@ function injectCSS() {
     border-color: #6c9;
     background: rgba(106,204,153,0.1);
     color: #6c9;
+}
+/* 0 分组时的空状态提示 */
+.hezl-groups-empty {
+    padding: 16px 8px;
+    text-align: center;
+    color: #888;
+    font-style: italic;
+    font-size: 12px;
+}
+/* 分组框底部虚线"添加 txt"按钮（每个分组 body 下方）*/
+.hezl-add-txt-btn {
+    border: 1px dashed var(--border-color, #555);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--input-text, #ddd);
+    padding: 4px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 12px;
+    margin: 2px 0 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+.hezl-add-txt-btn:hover {
+    border-color: #6c9;
+    background: rgba(106,204,153,0.1);
+    color: #6c9;
+}
+/* 目录树弹窗（比普通弹窗更宽更大）*/
+/* 用 .hezl-popover.hezl-tree-popover 提升特异性（0,2,0），覆盖基类 .hezl-popover（0,1,0）的 min/max-width、overflow 等，
+   否则基类声明在更靠后位置会胜出，导致弹窗被锁在 340px 宽、overflow-y:auto，宽高自适应失效 */
+.hezl-popover.hezl-tree-popover {
+    /* 宽高随目录树内容自适应：宽度按最长文件名撑开（上限 80vw），高度按可见行数撑开（上限 75vh）*/
+    min-width: 300px;
+    max-width: 80vw;
+    max-height: 75vh;
+    display: flex;
+    flex-direction: column;
+    width: max-content;
+    overflow: visible;  /* 滚动交由内部 .hezl-tree-popover-tree 处理，避免弹窗自身滚动条挤占 max-content 宽度 */
+}
+.hezl-tree-popover .hezl-popover-toolbar {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    padding: 4px 0;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+.hezl-tree-popover .hezl-popover-toolbar .hezl-rtxt-search {
+    flex: 1;
+    min-width: 100px;
+}
+.hezl-tree-popover .hezl-tree-popover-tree {
+    flex: 1 1 auto;  /* 高度随可见行数撑开，超出 max-height 时内部滚动 */
+    overflow: auto;
+    min-height: 80px;
+    max-height: 55vh;
+    border: 1px solid var(--border-color, #444);
+    border-radius: 3px;
+    margin: 4px 0;
+    padding: 2px;
+}
+/* 弹窗内目录树文件名完整显示（不省略截断），让最长文件名驱动弹窗宽度 */
+.hezl-tree-popover .hezl-tree-name {
+    flex: 0 0 auto;       /* 按内容宽度，不收缩不截断 */
+    overflow: visible;
+    text-overflow: clip;
+}
+.hezl-tree-popover-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border-color, #444);
+    flex-shrink: 0;
+}
+.hezl-tree-popover-footer .hezl-tree-count {
+    flex: 1;
+    color: #aaa;
+    font-size: 12px;
 }
 .hezl-rtxt-item-wrap {
     display: flex;
@@ -889,7 +971,7 @@ function serializeConfigStr(node) {
 async function restoreState(node, stateObj) {
     const state = getState(node);
     // 注意：不能在此处清空 state.groups。restoreState 是 async（含 await fetchFile），
-    // 若先清空，buildUI 的 IIFE 中 renderGroups 会在异步等待期间看到空数组并误添"默认分组"。
+    // 若先清空，buildUI 的 IIFE 中 renderGroups 会在异步等待期间看到空数组并误渲染空状态。
     // 改为先在本地 newGroups 中构建完整分组，所有 fetchFile 完成后原子赋值给 state.groups。
     // 旧格式兼容：顶层有 items 无 groups → 包装成单个默认分组
     let groupsData;
@@ -938,9 +1020,8 @@ async function restoreState(node, stateObj) {
     }
     // 所有异步 fetchFile 完成后，原子替换 state.groups
     state.groups = newGroups;
-    if (state.groups.length === 0) {
-        state.groups.push(createGroup("默认分组"));
-    }
+    // 允许 0 个分组：保存的 config 有几个分组就显示几个，不自动补「默认分组」。
+    // 新节点（无保存 config）由 getState 初始化时给 1 个「默认分组」。
     renderGroups(node);
 }
 
@@ -1089,6 +1170,141 @@ function openAddToGroupPopover(node, btnEl) {
     positionPopover(popover, btnEl);
 }
 
+// 目录树弹窗：点击分组的"添加 txt"按钮后弹出，包含目录树、搜索、工具栏、添加按钮
+// 替代原左侧目录树面板，改为按需弹出的下拉小窗口
+function openTreePopover(node, gi, anchorEl) {
+    closePopover();
+    const state = getState(node);
+    const group = state.groups[gi];
+    if (!group) return;
+
+    const popover = document.createElement("div");
+    popover.className = "hezl-popover hezl-tree-popover";
+
+    // ===== Header（可拖拽）=====
+    const header = document.createElement("div");
+    header.className = "hezl-popover-header";
+    const title = document.createElement("span");
+    title.style.flex = "1";
+    title.textContent = `添加 txt 到「${group.name}」`;
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "hezl-popover-close";
+    closeBtn.textContent = "×";
+    closeBtn.title = "关闭";
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    // ===== 工具栏：搜索框 + 刷新 + 展开 + 收起 + 全选 =====
+    const toolbar = document.createElement("div");
+    toolbar.className = "hezl-popover-toolbar";
+
+    const searchInput = document.createElement("input");
+    searchInput.type = "text";
+    searchInput.className = "hezl-rtxt-search";
+    searchInput.placeholder = "搜索文件名...";
+    searchInput.value = state.searchText || "";
+    searchInput.addEventListener("input", () => {
+        state.searchText = searchInput.value;
+        renderTree(node);
+    });
+    toolbar.appendChild(searchInput);
+
+    const refreshBtn = document.createElement("button");
+    refreshBtn.className = "hezl-rtxt-btn";
+    refreshBtn.textContent = "🔄";
+    refreshBtn.title = "刷新目录树（重新读取 SaveTXT 文件夹）";
+    refreshBtn.addEventListener("click", async () => {
+        refreshBtn.textContent = "...";
+        refreshBtn.disabled = true;
+        try { state.tree = await fetchTree(); } catch (e) { console.error("刷新目录树失败:", e); state.tree = []; }
+        renderTree(node);
+        refreshBtn.textContent = "🔄";
+        refreshBtn.disabled = false;
+    });
+    toolbar.appendChild(refreshBtn);
+
+    const expandBtn = document.createElement("button");
+    expandBtn.className = "hezl-rtxt-btn";
+    expandBtn.textContent = "⏬️";
+    expandBtn.title = "展开全部文件夹";
+    expandBtn.addEventListener("click", () => expandAllFolders(node));
+    toolbar.appendChild(expandBtn);
+
+    const collapseBtn = document.createElement("button");
+    collapseBtn.className = "hezl-rtxt-btn";
+    collapseBtn.textContent = "⏏️";
+    collapseBtn.title = "收起全部文件夹";
+    collapseBtn.addEventListener("click", () => collapseAllFolders(node));
+    toolbar.appendChild(collapseBtn);
+
+    const selectAllBtn = document.createElement("button");
+    selectAllBtn.className = "hezl-rtxt-btn";
+    selectAllBtn.textContent = "✅️";
+    selectAllBtn.title = "全选/取消全选当前可见的txt文件";
+    selectAllBtn.addEventListener("click", () => {
+        toggleSelectAll(node);
+        updateSelectAllBtn(node);
+    });
+    toolbar.appendChild(selectAllBtn);
+    node._hezl_select_all_btn = selectAllBtn;
+
+    // ===== 目录树容器 =====
+    const treeEl = document.createElement("div");
+    treeEl.className = "hezl-tree-popover-tree";
+    treeEl.textContent = "加载中...";
+    node._hezl_tree_el = treeEl;
+
+    // ===== Footer：已选数量 + 添加按钮 =====
+    const footer = document.createElement("div");
+    footer.className = "hezl-tree-popover-footer";
+    const countEl = document.createElement("span");
+    countEl.className = "hezl-tree-count";
+    countEl.textContent = "";
+    node._hezl_tree_count = countEl;
+    const addBtn = document.createElement("button");
+    addBtn.className = "hezl-rtxt-btn primary";
+    addBtn.textContent = "📄👉️ 添加到本组";
+    addBtn.addEventListener("click", async () => {
+        const selectedPaths = Object.keys(state.treeSelected).filter(k => state.treeSelected[k]);
+        if (selectedPaths.length === 0) {
+            alert("请先勾选要添加的 txt 文件");
+            return;
+        }
+        addBtn.disabled = true;
+        addBtn.textContent = "添加中...";
+        await doAddSelectedFiles(node, gi);
+        closePopover();
+        renderGroupItems(node, gi);
+    });
+    footer.appendChild(countEl);
+    footer.appendChild(addBtn);
+
+    popover.appendChild(header);
+    popover.appendChild(toolbar);
+    popover.appendChild(treeEl);
+    popover.appendChild(footer);
+    document.body.appendChild(popover);
+    currentPopover = popover;
+    makePopoverDraggable(popover, header);
+
+    // 关闭时清理 node 上的临时引用，避免 renderTree 等函数操作已移除的 DOM
+    popover._onClose = () => {
+        node._hezl_tree_el = null;
+        node._hezl_select_all_btn = null;
+        node._hezl_tree_count = null;
+    };
+
+    closeBtn.addEventListener("click", closePopover);
+    bindPopoverClose(popover, anchorEl);
+
+    // 渲染目录树到弹窗
+    renderTree(node);
+    positionPopover(popover, anchorEl);
+
+    // 自动聚焦搜索框
+    setTimeout(() => searchInput.focus(), 0);
+}
+
 // 实际执行添加：把勾选的 txt 依次添加到指定分组
 async function doAddSelectedFiles(node, gi) {
     const state = getState(node);
@@ -1153,22 +1369,27 @@ function renderTree(node) {
 
     if (!state.tree || state.tree.length === 0) {
         container.innerHTML = '<div class="hezl-tree-empty">SaveTXT 文件夹为空<br>请添加 txt 文件</div>';
-        return;
+    } else {
+        const displayTree = filterTree(state.tree, state.searchText);
+        if (displayTree.length === 0) {
+            container.innerHTML = '<div class="hezl-tree-empty">未找到匹配的文件</div>';
+        } else {
+            const rootWrap = document.createElement("div");
+            for (const child of displayTree) {
+                rootWrap.appendChild(renderTreeNode(node, child));
+            }
+            container.appendChild(rootWrap);
+        }
     }
-
-    const displayTree = filterTree(state.tree, state.searchText);
-    if (displayTree.length === 0) {
-        container.innerHTML = '<div class="hezl-tree-empty">未找到匹配的文件</div>';
-        return;
-    }
-
-    const rootWrap = document.createElement("div");
-    for (const child of displayTree) {
-        rootWrap.appendChild(renderTreeNode(node, child));
-    }
-    container.appendChild(rootWrap);
     // 同步更新全选按钮图标状态
     updateSelectAllBtn(node);
+    // 更新已选数量显示（目录树弹窗 footer）
+    if (node._hezl_tree_count) {
+        const cnt = Object.keys(state.treeSelected).filter(k => state.treeSelected[k]).length;
+        node._hezl_tree_count.textContent = cnt > 0 ? `已选 ${cnt} 个` : "";
+    }
+    // 弹窗宽度随内容变化后做贴边校正，避免溢出视口右侧/下侧（不重新锚定按钮，仅贴边）
+    clampTreePopoverOnScreen(node);
 }
 
 function renderTreeNode(node, treeNode) {
@@ -1184,22 +1405,14 @@ function renderTreeNode(node, treeNode) {
         toggle.className = "hezl-tree-toggle";
         toggle.textContent = expanded ? "▼" : "▶";
 
-        const icon = document.createElement("span");
-        icon.className = "hezl-tree-icon";
-        icon.textContent = "📁";
-
-        const name = document.createElement("span");
-        name.className = "hezl-tree-name";
-        name.textContent = treeNode.name;
-
-        // 文件夹勾选框（联动子txt）
+        // 文件夹勾选框（联动子txt）：放在图标前面（toggle 之后、icon 之前）
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.className = "hezl-tree-check";
         cb.checked = isFolderAllSelected(node, treeNode);
         cb.title = "勾选/取消此文件夹下所有txt文件";
         cb.addEventListener("click", (e) => {
-            // 阻止冒泡到row
+            // 阻止冒泡到 row，避免点击勾选框触发展开/收起
             e.stopPropagation();
         });
         cb.addEventListener("change", () => {
@@ -1213,10 +1426,18 @@ function renderTreeNode(node, treeNode) {
             renderTree(node);
         });
 
+        const icon = document.createElement("span");
+        icon.className = "hezl-tree-icon";
+        icon.textContent = "📁";
+
+        const name = document.createElement("span");
+        name.className = "hezl-tree-name";
+        name.textContent = treeNode.name;
+
         row.appendChild(toggle);
+        row.appendChild(cb);
         row.appendChild(icon);
         row.appendChild(name);
-        row.appendChild(cb);
         // 悬停提示：列出文件夹内的子文件夹和txt文件名
         const childItems = (treeNode.children || []);
         if (childItems.length > 0) {
@@ -1234,13 +1455,16 @@ function renderTreeNode(node, treeNode) {
         }
         wrap.appendChild(childrenWrap);
 
-        toggle.addEventListener("click", (e) => {
-            e.stopPropagation();
+        // 点击文件夹（三角形/图标/名称/行空白）即展开/收起，不必只点三角形；
+        // 勾选框已 stopPropagation 不会到这里，点击勾选框只切换选中不展开
+        row.addEventListener("click", () => {
             const s = getState(node);
             const isExp = s.treeExpanded[treeNode.path] === true;
             s.treeExpanded[treeNode.path] = !isExp;
             childrenWrap.style.display = !isExp ? "" : "none";
             toggle.textContent = !isExp ? "▼" : "▶";
+            // 展开后可见行数变化可能改变弹窗高度，贴边校正避免溢出视口下侧
+            clampTreePopoverOnScreen(node);
         });
     } else {
         // txt 文件
@@ -1249,20 +1473,13 @@ function renderTreeNode(node, treeNode) {
         spacer.className = "hezl-tree-toggle";
         spacer.textContent = "";
 
-        const icon = document.createElement("span");
-        icon.className = "hezl-tree-icon";
-        icon.textContent = "📄";
-
-        const name = document.createElement("span");
-        name.className = "hezl-tree-name";
-        name.textContent = treeNode.name;
-        name.title = treeNode.path;
-
+        // txt 勾选框：放在文件名前面（spacer 之后、icon 之前）
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.className = "hezl-tree-check";
         cb.checked = !!state.treeSelected[treeNode.path];
         cb.addEventListener("click", (e) => {
+            // 阻止冒泡到 row，避免与 row click 双重切换
             e.stopPropagation();
         });
         cb.addEventListener("change", () => {
@@ -1273,9 +1490,24 @@ function renderTreeNode(node, treeNode) {
             renderTree(node);
         });
 
-        // shift+点击行实现范围多选
+        const icon = document.createElement("span");
+        icon.className = "hezl-tree-icon";
+        icon.textContent = "📄";
+
+        const name = document.createElement("span");
+        name.className = "hezl-tree-name";
+        name.textContent = treeNode.name;
+        name.title = treeNode.path;
+
+        row.appendChild(spacer);
+        row.appendChild(cb);
+        row.appendChild(icon);
+        row.appendChild(name);
+
+        // 点击 txt 文件（名称/图标/行空白）即切换勾选状态，支持 shift+点击范围多选；
+        // 勾选框已 stopPropagation 不会到这里，避免双重触发
         row.addEventListener("click", (e) => {
-            if (e.target === cb || e.target === toggle || e.target.tagName === "INPUT") return;
+            if (e.target === cb || e.target.tagName === "INPUT") return;
             handleTreeRowClick(node, treeNode, e.shiftKey);
         });
 
@@ -1283,11 +1515,6 @@ function renderTreeNode(node, treeNode) {
         if (state.treeShiftSelected[treeNode.path]) {
             row.classList.add("shift-selected");
         }
-
-        row.appendChild(spacer);
-        row.appendChild(icon);
-        row.appendChild(name);
-        row.appendChild(cb);
         // 悬停提示：显示txt文件全名
         row.title = treeNode.name;
         wrap.appendChild(row);
@@ -1687,10 +1914,14 @@ function renderGroups(node) {
     if (!container) return;
     const savedScrollTop = container.scrollTop;
     container.innerHTML = "";
-    if (state.groups.length === 0) {
-        state.groups.push(createGroup("默认分组"));
-    }
+    // 允许 0 个分组：不再自动补「默认分组」。空时仅显示空状态提示 + 「➕ 分组」按钮。
     const frag = document.createDocumentFragment();
+    if (state.groups.length === 0) {
+        const emptyHint = document.createElement("div");
+        emptyHint.className = "hezl-groups-empty";
+        emptyHint.textContent = "暂无分组，点击下方按钮新增分组";
+        frag.appendChild(emptyHint);
+    }
     state.groups.forEach((group, gi) => {
         frag.appendChild(buildGroupEl(node, gi));
     });
@@ -1987,6 +2218,15 @@ function buildGroupEl(node, gi) {
 
     groupEl.appendChild(header);
     groupEl.appendChild(body);
+
+    // 分组底部虚线"添加 txt"按钮：点击弹出目录树小窗口选择文件添加到本组
+    const addTxtBtn = document.createElement("button");
+    addTxtBtn.className = "hezl-add-txt-btn";
+    addTxtBtn.textContent = "➕ 添加 txt";
+    addTxtBtn.title = "从目录树选择 txt 文件添加到此分组";
+    addTxtBtn.addEventListener("click", () => openTreePopover(node, gi, addTxtBtn));
+    groupEl.appendChild(addTxtBtn);
+
     return groupEl;
 }
 
@@ -2011,7 +2251,7 @@ function renderGroupItems(node, gi) {
     if (group._mergeCountInput) group._mergeCountInput.value = group.merge_count;
 
     if (group.items.length === 0) {
-        container.innerHTML = '<div class="hezl-items-empty">在左侧勾选 txt 后点击"添加"到此分组</div>';
+        container.innerHTML = '<div class="hezl-items-empty">点击下方"➕ 添加 txt"按钮选择文件</div>';
         return;
     }
 
@@ -2125,7 +2365,7 @@ function renderGroupItems(node, gi) {
         row.addEventListener("contextmenu", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            showItemContextMenu(node, item, e.clientX, e.clientY);
+            showItemContextMenu(node, gi, item, e.clientX, e.clientY, row);
         });
 
         itemWrap.appendChild(indexEl);
@@ -2133,6 +2373,17 @@ function renderGroupItems(node, gi) {
         frag.appendChild(itemWrap);
     });
     container.appendChild(frag);
+    // 每个分组最多显示 10 个 txt 文件框，超出部分滚动查看
+    // 通过第 11 项的 offsetTop（相对于 container padding edge）计算恰好显示 10 项的 maxHeight
+    const MAX_VISIBLE_ITEMS = 10;
+    const wraps = container.querySelectorAll(".hezl-rtxt-item-wrap");
+    if (wraps.length > MAX_VISIBLE_ITEMS && wraps[MAX_VISIBLE_ITEMS]) {
+        // offsetTop 已含 padding-top(4px)，再 +4 补 padding-bottom，使第 10 项完整可见、第 11 项起滚动
+        container.style.maxHeight = (wraps[MAX_VISIBLE_ITEMS].offsetTop + 4) + "px";
+    } else {
+        // ≤10 项时清除内联 maxHeight，回退到 CSS max-height:50vh（通常不会触发滚动）
+        container.style.maxHeight = "";
+    }
     container.scrollTop = savedScrollTop;
     container.scrollLeft = savedScrollLeft;
 }
@@ -2158,16 +2409,13 @@ function deleteGroup(node, gi) {
     const state = getState(node);
     const group = state.groups[gi];
     if (!group) return;
-    if (state.groups.length <= 1) {
-        alert("至少保留一个分组");
-        return;
-    }
+    // 允许 0 个分组：可删除最后一个分组，不再强制至少保留一个。
     const msg = group.items.length > 0
         ? `确定删除分组「${group.name}」及其中的 ${group.items.length} 个 txt 吗？`
         : `确定删除空分组「${group.name}」吗？`;
     if (!confirm(msg)) return;
     state.groups.splice(gi, 1);
-    if (state.lastAddGroup >= state.groups.length) state.lastAddGroup = state.groups.length - 1;
+    if (state.lastAddGroup >= state.groups.length) state.lastAddGroup = Math.max(0, state.groups.length - 1);
     renderGroups(node);
 }
 
@@ -2187,7 +2435,7 @@ function onItemCtxOutside(e) {
 function onItemCtxEsc(e) {
     if (e.key === "Escape") closeItemContextMenu();
 }
-function showItemContextMenu(node, item, x, y) {
+function showItemContextMenu(node, gi, item, x, y, anchorEl) {
     closeItemContextMenu();
     const menu = document.createElement("div");
     menu.className = "hezl-ctx-menu";
@@ -2197,7 +2445,7 @@ function showItemContextMenu(node, item, x, y) {
     locateItem.textContent = "📍 定位文件";
     locateItem.addEventListener("click", () => {
         closeItemContextMenu();
-        locateFileInTree(node, item.path);
+        locateFileInTree(node, item.path, gi, anchorEl);
     });
     menu.appendChild(locateItem);
 
@@ -2215,10 +2463,14 @@ function showItemContextMenu(node, item, x, y) {
     }, 0);
 }
 
-// 在左侧目录树中定位指定路径的txt文件：展开所有父文件夹并滚动到该文件
-function locateFileInTree(node, filePath) {
+// 在目录树弹窗中定位指定路径的txt文件：展开所有父文件夹并滚动到该文件
+// 若目录树弹窗未打开，先打开弹窗（锚定到触发元素，定位到所属分组 gi）再定位
+async function locateFileInTree(node, filePath, gi, anchorEl) {
     const state = getState(node);
-    if (!state.tree) return;
+    // 目录树数据未就绪时先拉取（通常 buildUI 初始化时已预取）
+    if (!state.tree) {
+        try { state.tree = await fetchTree(); } catch (e) { state.tree = []; console.error("加载目录树失败:", e); }
+    }
     // 将路径按 "/" 拆分，逐级展开父文件夹
     const parts = filePath.split("/");
     let currentPath = "";
@@ -2226,11 +2478,15 @@ function locateFileInTree(node, filePath) {
         currentPath = currentPath ? currentPath + "/" + parts[i] : parts[i];
         state.treeExpanded[currentPath] = true;
     }
-    // 清除搜索文本，确保文件可见
+    // 清除搜索文本，确保文件可见（需在 openTreePopover 之前清空，使弹窗内搜索框初始化为空）
     state.searchText = "";
-    // 重新渲染树
-    renderTree(node);
-    // 滚动到目标文件
+    // 目录树弹窗未打开时先打开（定位到所属分组）；openTreePopover 内部已调用 renderTree
+    if (!node._hezl_tree_el) {
+        openTreePopover(node, gi, anchorEl);
+    } else {
+        renderTree(node);
+    }
+    // 滚动到目标文件并高亮
     requestAnimationFrame(() => {
         const treeEl = node._hezl_tree_el;
         if (!treeEl) return;
@@ -2311,6 +2567,7 @@ let popoverScrollHandler = null;
 
 function closePopover() {
     if (currentPopover) {
+        if (currentPopover._onClose) currentPopover._onClose();
         currentPopover.remove();
         currentPopover = null;
     }
@@ -2363,6 +2620,27 @@ function positionPopover(popover, btnEl) {
         left = (vw - pw) / 2;
         top = (vh - ph) / 2;
     }
+    if (left + pw > vw - 4) left = vw - pw - 4;
+    if (left < 4) left = 4;
+    if (top + ph > vh - 4) top = Math.max(4, vh - ph - 4);
+    if (top < 4) top = 4;
+    popover.style.left = left + "px";
+    popover.style.top = top + "px";
+}
+
+// 目录树弹窗宽度随内容（文件名长度/展开层级）变化后，仅做贴边校正保持其在视口内。
+// 不重新锚定到触发按钮（避免搜索/展开时弹窗跳回按钮下方），与 positionPopover 的 _userMoved 分支一致。
+function clampTreePopoverOnScreen(node) {
+    const treeEl = node._hezl_tree_el;
+    if (!treeEl) return;
+    const popover = treeEl.closest(".hezl-tree-popover");
+    if (!popover) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pw = popover.offsetWidth;
+    const ph = popover.offsetHeight;
+    let left = parseFloat(popover.style.left) || 0;
+    let top = parseFloat(popover.style.top) || 0;
     if (left + pw > vw - 4) left = vw - pw - 4;
     if (left < 4) left = 4;
     if (top + ph > vh - 4) top = Math.max(4, vh - ph - 4);
@@ -2902,94 +3180,10 @@ function buildUI(node) {
     const container = document.createElement("div");
     container.className = "hezl-rtxt-container";
 
-    // ===== 左侧面板 =====
-    const leftPanel = document.createElement("div");
-    leftPanel.className = "hezl-rtxt-left";
-    leftPanel.style.width = state.leftWidth + "px";
+    // 目录树已移至分组框的"添加 txt"弹窗（openTreePopover），不再常驻左侧面板。
+    // node._hezl_tree_el / node._hezl_select_all_btn 在弹窗打开时动态设置，关闭时清空。
 
-    // 顶部工具栏：搜索 + 按钮
-    const leftToolbar = document.createElement("div");
-    leftToolbar.className = "hezl-rtxt-left-toolbar";
-
-    const searchInput = document.createElement("input");
-    searchInput.type = "text";
-    searchInput.className = "hezl-rtxt-search";
-    searchInput.placeholder = "搜索文件名...";
-    searchInput.addEventListener("input", () => {
-        state.searchText = searchInput.value;
-        renderTree(node);
-    });
-
-    const btnRow = document.createElement("div");
-    btnRow.className = "hezl-rtxt-btn-row";
-
-    const refreshBtn = document.createElement("button");
-    refreshBtn.className = "hezl-rtxt-btn";
-    refreshBtn.textContent = "🔄";
-    refreshBtn.title = "刷新目录树（重新读取SaveTXT文件夹）";
-    refreshBtn.addEventListener("click", async () => {
-        refreshBtn.textContent = "...";
-        refreshBtn.disabled = true;
-        try {
-            state.tree = await fetchTree();
-        } catch (e) {
-            console.error("刷新目录树失败:", e);
-            state.tree = [];
-        }
-        renderTree(node);
-        refreshBtn.textContent = "🔄";
-        refreshBtn.disabled = false;
-    });
-
-    const expandBtn = document.createElement("button");
-    expandBtn.className = "hezl-rtxt-btn";
-    expandBtn.textContent = "⏬️";
-    expandBtn.title = "展开全部文件夹";
-    expandBtn.addEventListener("click", () => expandAllFolders(node));
-
-    const collapseBtn = document.createElement("button");
-    collapseBtn.className = "hezl-rtxt-btn";
-    collapseBtn.textContent = "⏏️";
-    collapseBtn.title = "收起全部文件夹";
-    collapseBtn.addEventListener("click", () => collapseAllFolders(node));
-
-    const selectAllBtn = document.createElement("button");
-    selectAllBtn.className = "hezl-rtxt-btn";
-    selectAllBtn.textContent = "✅️";
-    selectAllBtn.title = "全选/取消全选当前可见的txt文件";
-    selectAllBtn.addEventListener("click", () => {
-        toggleSelectAll(node);
-        updateSelectAllBtn(node);
-    });
-    node._hezl_select_all_btn = selectAllBtn;
-
-    const addBtn = document.createElement("button");
-    addBtn.className = "hezl-rtxt-btn primary";
-    addBtn.textContent = "📄👉️";
-    addBtn.title = "将勾选的txt文件添加到右侧";
-    addBtn.addEventListener("click", () => addSelectedFiles(node, addBtn));
-
-    btnRow.appendChild(refreshBtn);
-    btnRow.appendChild(expandBtn);
-    btnRow.appendChild(collapseBtn);
-    btnRow.appendChild(selectAllBtn);
-    btnRow.appendChild(addBtn);
-    leftToolbar.appendChild(searchInput);
-    leftToolbar.appendChild(btnRow);
-    leftPanel.appendChild(leftToolbar);
-
-    const treeEl = document.createElement("div");
-    treeEl.className = "hezl-rtxt-tree";
-    treeEl.textContent = "加载中...";
-    leftPanel.appendChild(treeEl);
-    node._hezl_tree_el = treeEl;
-
-    // 分隔条
-    const resizer = document.createElement("div");
-    resizer.className = "hezl-rtxt-resizer";
-    setupResizer(node, leftPanel, resizer);
-
-    // ===== 右侧面板 =====
+    // ===== 右侧面板（占满整个节点宽度）=====
     const rightPanel = document.createElement("div");
     rightPanel.className = "hezl-rtxt-right";
 
@@ -3039,8 +3233,6 @@ function buildUI(node) {
     rightPanel.appendChild(groupsEl);
     node._hezl_groups_el = groupsEl;
 
-    container.appendChild(leftPanel);
-    container.appendChild(resizer);
     container.appendChild(rightPanel);
 
     // DOM 控件
@@ -3074,10 +3266,9 @@ function buildUI(node) {
     // 容器用 CSS height:100% 填充父级（前端通过 getter 设置 wrapper 确定高度）
     container.style.width = "100%";
 
-    // 初始化加载
+    // 初始化加载：预取目录树数据（目录树在弹窗打开时按需渲染，不再常驻面板）
     (async () => {
         try { state.tree = await fetchTree(); } catch (e) { state.tree = []; console.error("加载目录树失败:", e); }
-        renderTree(node);
         renderGroups(node);
         await refreshPresets(node);
     })();
