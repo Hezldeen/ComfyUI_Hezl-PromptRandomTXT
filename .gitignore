@@ -1,5 +1,6 @@
 .vscode/
 .trae/
+.zcode/
 __pycache__/
 SaveTXT/00_Hezl/*
 SavePreset/*

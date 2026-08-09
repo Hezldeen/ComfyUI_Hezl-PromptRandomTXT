@@ -346,6 +346,19 @@ function injectCSS() {
     border-radius: 3px;
 }
 .hezl-group-rename-btn:hover { color: #6c9; background: rgba(106,204,153,0.15); }
+/* 分组折叠/展开按钮（▶ 收起 / ▼ 展开，点击切换 items 区域显隐）*/
+.hezl-group-collapse-btn {
+    border: none;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 1px 3px;
+    line-height: 1;
+    flex-shrink: 0;
+    border-radius: 3px;
+}
+.hezl-group-collapse-btn:hover { color: #6c9; background: rgba(106,204,153,0.15); }
 .hezl-group-toolbar {
     display: flex;
     gap: 4px;
@@ -953,6 +966,7 @@ function serializeState(node) {
             merge_enabled: g.merge_enabled,
             merge_count: g.merge_count,
             separator: g.separator ?? ", ",
+            collapsed: !!g.collapsed, // 前端折叠状态，随工作流/预设保存
             items: g.items.map(it => ({
                 path: it.path,
                 name: it.name,
@@ -1969,6 +1983,17 @@ function buildGroupEl(node, gi) {
         if (container) container.querySelectorAll(".group-drag-over").forEach(el => el.classList.remove("group-drag-over"));
     });
 
+    // 折叠/展开按钮（▶ 收起 / ▼ 展开，点击切换 items 区域显隐；显示状态由 renderGroupItems 统一应用）
+    const collapseBtn = document.createElement("button");
+    collapseBtn.className = "hezl-group-collapse-btn";
+    collapseBtn.textContent = group.collapsed ? "▶" : "▼";
+    collapseBtn.title = "折叠/展开此分组";
+    collapseBtn.addEventListener("click", () => {
+        group.collapsed = !group.collapsed;
+        renderGroupItems(node, gi);
+    });
+    group._collapseBtn = collapseBtn;
+
     // 分组名 + ✏️ 重命名按钮（左侧一组，与其他按钮隔开）
     const nameWrap = document.createElement("div");
     nameWrap.className = "hezl-group-name-wrap";
@@ -2125,6 +2150,7 @@ function buildGroupEl(node, gi) {
     toolbar.appendChild(deleteGroupBtn);
 
     header.appendChild(handle);
+    header.appendChild(collapseBtn);
     header.appendChild(nameWrap);
     header.appendChild(toolbar);
 
@@ -2225,6 +2251,7 @@ function buildGroupEl(node, gi) {
     addTxtBtn.textContent = "➕ 添加 txt";
     addTxtBtn.title = "从目录树选择 txt 文件添加到此分组";
     addTxtBtn.addEventListener("click", () => openTreePopover(node, gi, addTxtBtn));
+    group._addTxtBtn = addTxtBtn;
     groupEl.appendChild(addTxtBtn);
 
     return groupEl;
@@ -2249,6 +2276,18 @@ function renderGroupItems(node, gi) {
     updateSeedBtnForGroup(node, gi);
     if (group._seedInput) group._seedInput.value = group.seed;
     if (group._mergeCountInput) group._mergeCountInput.value = group.merge_count;
+
+    // 折叠状态显示控制：隐藏 items 区域与"➕ 添加 txt"按钮，仅保留分组头部（工具栏按钮仍可用）
+    if (group._bodyEl) group._bodyEl.style.display = group.collapsed ? "none" : "";
+    if (group._addTxtBtn) group._addTxtBtn.style.display = group.collapsed ? "none" : "";
+    if (group._collapseBtn) group._collapseBtn.textContent = group.collapsed ? "▶" : "▼";
+    if (group.collapsed) {
+        // 折叠时不渲染 items，也跳过 maxHeight 计算：display:none 子树中 offsetTop 恒为 0，
+        // 直接计算会把 maxHeight 错误设为 4px，展开后 items 区域将卡死无法显示。
+        // 展开时（点击 ▶ 触发本函数）会重新渲染并正确计算 maxHeight。
+        container.innerHTML = "";
+        return;
+    }
 
     if (group.items.length === 0) {
         container.innerHTML = '<div class="hezl-items-empty">点击下方"➕ 添加 txt"按钮选择文件</div>';
