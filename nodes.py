@@ -24,6 +24,15 @@ def _resolve_txt_path(rel_path):
     return full
 
 
+def _read_text(full):
+    """读取用户 txt，按 BOM 识别编码：UTF-16(BE/LE) 与带 BOM 的 UTF-8 均可读，无 BOM 时按 UTF-8"""
+    with open(full, "rb") as f:
+        raw = f.read()
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16")
+    return raw.decode("utf-8-sig")
+
+
 def _safe_preset_name(name):
     """清理预设名称，移除危险字符"""
     name = (name or "").strip()
@@ -99,16 +108,13 @@ async def get_file(request):
         full = _resolve_txt_path(rel_path)
         if full is None or not os.path.isfile(full):
             return web.json_response({"error": "File not found"}, status=404)
-        with open(full, "r", encoding="utf-8") as f:
-            content = f.read()
-        raw_lines = content.split("\n")
+        raw_lines = _read_text(full).split("\n")
         # 旁路翻译：同名 .txt.tr 文件（行与原文 txt 一一对应，无则返回空数组）
         raw_tr = []
         tr_full = _resolve_txt_path(rel_path + ".tr")
         if tr_full and os.path.isfile(tr_full):
             try:
-                with open(tr_full, "r", encoding="utf-8") as f:
-                    raw_tr = f.read().split("\n")
+                raw_tr = _read_text(tr_full).split("\n")
             except Exception:
                 raw_tr = []
         # strip + 过滤空行（与 execute() 一致），.tr 按 .txt 非空行对齐
@@ -326,8 +332,7 @@ class HezlRandomTXT:
                     continue
 
                 try:
-                    with open(full, "r", encoding="utf-8") as f:
-                        lines = [l.strip() for l in f.read().split("\n") if l.strip()]
+                    lines = [l.strip() for l in _read_text(full).split("\n") if l.strip()]
                 except Exception:
                     continue
 

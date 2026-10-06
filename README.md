@@ -170,6 +170,12 @@ ComfyUI_Hezl-PromptRandomTXT/
 
 ## 更新日志
 
+### 261007
+1. 修复 UTF-16 编码的 txt 词组为空的问题。
+    - 根因：txt 若以记事本「Unicode」（UTF-16 LE + BOM）保存，后端按 UTF-8 打开会抛 `UnicodeDecodeError`；`/hezl_randomtxt/file` 返回的是无 `lines` 字段的错误响应（前端 `data.lines || []` 回退为空数组），`execute()` 也因 `except Exception: continue` 跳过该文件。
+    - 新增 `_read_text()`：按 BOM 识别编码，`FF FE`/`FE FF` 按 `utf-16` 解码，其余按 `utf-8-sig`（顺带去掉 UTF-8 BOM）。`/hezl_randomtxt/file`（含 `.tr` 译文）与 `execute()` 统一改用它读取。
+    - 原有 UTF-8 txt 的读取结果不变，前端与后端仍使用同一套按行结果（strip + 过滤空行）。
+
 ### 260809
 1. 每个分组新增折叠/展开功能。
     - 分组头部新增 ▶/▼ 折叠按钮（位于拖拽手柄与分组名之间），点击切换本组 txt 列表的显示/隐藏。
